@@ -219,7 +219,7 @@ real(kind=fk) order(nx*ny*nz)
 real(kind=dk),allocatable :: A(:,:),b(:),s(:)
 real(kind=fk) :: radsqd
 real(kind=dk) :: xp
-real(kind=fk)    gmean,cmean,cstdev
+real(kind=fk)    cmean,cstdev,gmean
 integer(kind=gik) id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
 integer(kind=gik) nclose,infoct(8),lktype
 real(kind=fk) close(size(vr))
@@ -230,12 +230,13 @@ real(kind=fk) :: av,ss,simval
 
 radsqd = radius  * radius
 idbg = 0
+gmean = 0
 
 nd = size(vr)
 nxy = nx*ny
 nxyz = nxy*nz
 
-print *,"seed",seed
+print *,"seed for realization:",seed
 !set seed
 seed_size=1
 call random_seed(size=seed_size)
@@ -275,6 +276,12 @@ call random_seed(put=(/ seed /))
             end do
       end if
       call sortem_original(1,nxyz,sim,order)
+
+#ifdef TRACE                  
+      do ind=1,nxyz
+        print *,'RANDOM PATH=',ind,sim(ind),order(ind)
+      end do
+#endif
 
 ! Initialize the simulation:
 !
@@ -343,8 +350,8 @@ call random_seed(put=(/ seed /))
     zz = zmn + real(iz-1)*zsiz
     
     
-    print *,"xx,yy,zz=",xx,yy,zz
 #ifdef TRACE                  
+    print *,"xx,yy,zz=",xx,yy,zz
     print *,"sstrat=",sstrat
     print *,"radsqd=",radsqd
     print *,"ndmax=",ndmax
@@ -379,11 +386,11 @@ call random_seed(put=(/ seed /))
       if(nclose.gt.ndmax) nclose = ndmax
     endif
 
-    call search_ctable(ix,iy,iz,sim, &
-        nx,ny,nz, xmn,ymn,zmn, xsiz,ysiz,zsiz, &
-        noct,nodmax, &
-        ctable_st, &
-        ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
+!    call search_ctable(ix,iy,iz,sim, &
+!        nx,ny,nz, xmn,ymn,zmn, xsiz,ysiz,zsiz, &
+!        noct,nodmax, &
+!        ctable_st, &
+!        ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
 
 #ifdef TRACE                  
     print *,"ncnode=",ncnode
@@ -392,9 +399,9 @@ call random_seed(put=(/ seed /))
     print *,"cnodey=",cnodey(1:ncnode)
     print *,"cnodez=",cnodez(1:ncnode)
     print *,"cnodev=",cnodev(1:ncnode)
+    print *,"nclose,ncnode=",nclose,ncnode
 #endif
         
-    print *,"nclose,ncnode=",nclose,ncnode
 !
 ! Calculate the conditional mean and standard deviation.  This will be
 ! done with kriging if there are data, otherwise, the global mean and
@@ -416,9 +423,16 @@ call random_seed(put=(/ seed /))
 !
       lktype = ktype
       if(ktype.eq.1.and.(nclose+ncnode).lt.4)lktype=0
+      
+      !hack
+      ncnode = 0
       call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,&
-                 nclose,close,ncnode,icnode,cnodex,cnodey,cnodez,cnodev, &
+                 nclose,close, &
+                 ncnode,icnode,cnodex,cnodey,cnodez,cnodev, &
                  nst,c0,cc,aa,it,vrotmat,cbb,ctable_st,cmean,cstdev)
+                 
+      cmean = 0.0
+      cstdev = 1.0
     endif
 !
 ! Draw a random number and assign a value to this node:
@@ -487,7 +501,7 @@ call random_seed(put=(/ seed /))
   end if
 end subroutine
 
-subroutine krige( x,y,z, vra, &
+subroutine krige(x,y,z,vra, &
       ix,iy,iz,xx,yy,zz, &
       ktype, &
       gmean, &
@@ -505,7 +519,7 @@ implicit none
 real(kind=fk), intent(in) :: x(:),y(:),z(:),vra(:)
 integer(kind=gik), intent(in) :: ix,iy,iz
 real(kind=fk), intent(in) :: xx,yy,zz
-real(kind=fk), intent(out) :: gmean
+real(kind=fk), intent(in) :: gmean
 integer(kind=gik), intent(in) :: ktype
 integer(kind=gik), intent(in) :: nclose
 real(kind=fk), intent(in) :: close(:)
@@ -518,7 +532,7 @@ real(kind=fk), intent(out) :: cmean,cstdev
 !locals
 logical first
 integer na,neq,i,j,k,ierr,idbg,ie,is,ising,ldbg,indexi,indexj
-real(kind=fk), allocatable :: a(:,:),r(:),rr(:),ipiv(:)
+real(kind=fk), allocatable :: a(:,:),b(:),s(:),rr(:)
 integer(kind=gik) :: lktype,ind
 integer :: info
 real(kind=fk) :: cmax,cov,sumwts,x1,y1,z1,x2,y2,z2
@@ -542,7 +556,10 @@ if(lktype.ge.3) then
       ! end if
 end if
 
-allocate(a(neq,neq),r(neq),rr(neq),ipiv(neq))
+allocate(a(neq,neq),b(neq),rr(neq),s(neq))
+
+a = 0
+b = 0
 !
 ! Set up kriging matrices:
 !
@@ -557,31 +574,38 @@ do j=1,nclose
     x1 = x(indexi)
     y1 = y(indexi)
     z1 = z(indexi)
+    if (indexi /=indexj .and. (x1 == x2 .and. y1 == y2 .and. z1 == z2)) then
+    print *, indexi,indexj,x1,y1,z1,x2,y2,z2
+    stop "SAMPLES REPETEAD"
+    end if
     call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
-    a(i,j) = dble(cov)
-    a(j,i) = dble(cov)
+    a(i,j) = cov
+    a(j,i) = cov
 
   end do
 
   call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
-  r(j) = dble(cov)
+  b(j) = cov
 
 end do
 
 !simulated part
 do j=nclose+1,na
+  stop "WHAT"
   indexj  = j-nclose
   x2 = cnodex(indexj)
   y2 = cnodey(indexj)
   z2 = cnodez(indexj)
-  do i=nclose+1,na
+  do i=j,na
     indexi  = i-nclose
     x1 = cnodex(indexi)
     y1 = cnodey(indexi)
     z1 = cnodez(indexi)
     
-    !print *,x1,y1,z1,x2,y2,z2
     call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+#ifdef TRACE                  
+    print *,x1,y1,z1,x2,y2,z2,cov
+#endif
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
 
@@ -589,17 +613,22 @@ do j=nclose+1,na
   call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
   
   !print *,'sim par',j,xx,yy,zz,x2,y2,z2,cov,sqdist(xx,yy,zz,x2,y2,z2,vrotmat(1,:,:))
-  r(j) = dble(cov)
+  b(j) = dble(cov)
 end do
 
 !samples against simulated part
 do j=nclose+1,na
+  stop "WHAT"
   indexj  = j-nclose
+  x2 = cnodex(indexj)
+  y2 = cnodey(indexj)
+  z2 = cnodez(indexj)
   do i=1,nclose
     indexi  = int(close(i))
-    call cova3(x(indexi),y(indexi),z(indexi),&
-               cnodex(indexj),cnodex(indexj),cnodex(indexj),&
-               nst,c0,it,cc,aa,vrotmat,cmax,cov)
+    x1 = x(indexi)
+    y1 = y(indexi)
+    z1 = z(indexi)
+    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
   end do
@@ -615,7 +644,7 @@ if(lktype.eq.1.or.lktype.eq.3) then
         a(na+1,i) = 1.0
       end do
       a(na+1,na+1)    = 0.0
-      r(na+1)  = 1.0
+      b(na+1)  = 1.0
 endif
 !
 ! Addition of the External Drift Constraint:
@@ -660,22 +689,34 @@ end if
 
 
 !debug krigin system
+#ifdef TRACE_KS         
 do i=1,neq
-  write(*,101) i,r(i),(a(i,j),j=1,neq)
+  write(*,*) 'TRACE_KS:',i,b(i),(a(i,j),j=1,neq)
 end do
+#endif
 
-
-101        format('    r(',i2,') =',f7.4,'  a= ',99f7.4)
+101        format('BEFORE SE: r(',i3,') =',f7.4,'  a= ',99f7.4)
 !
 ! Solve the Kriging System:
 !
-rr = r
+rr = b
 
 if(neq.eq.1.and.lktype.ne.3) then
-      r(1)  = r(1) / a(1,1)
+      b(1)  = b(1) / a(1,1)
       ising = 0
 else
-  call system_solver(a,r,.true.,info)
+  call system_solver(a,b,s,.true.,info)
+  if (info /= 0) then
+    print *,"info=",info
+    stop "BAD SYSTEM"
+  end if
+  !r must sum up 1
+  sumwts = 0.0
+  do i=1,na
+    sumwts = sumwts + real(s(i))
+  end do
+  
+  if (sumwts > 1.0) stop "Weights must sum up 1.0"
 endif
 
 !
@@ -702,13 +743,15 @@ cmean  = 0.0
 cstdev = cbb
 sumwts = 0.0
 do i=1,na
-      write(ldbg,*) 'EST/VAR: ',i,r(i),vra(i),rr(i)
-      cmean  = cmean  + real(r(i))*vra(i)
-      cstdev = cstdev - real(r(i)*rr(i))
-      sumwts = sumwts + real(r(i))
+      write(ldbg,*) 'EST/VAR: ',i,s(i),vra(i),rr(i)
+#ifdef TRACE                  
+#endif
+      cmean  = cmean  + real(s(i))*vra(i)
+      cstdev = cstdev - real(s(i)*rr(i))
+      sumwts = sumwts + real(s(i))
 end do
 
-if(lktype.eq.1) cstdev = cstdev - real(r(na+1))
+if(lktype.eq.1) cstdev = cstdev - real(b(na+1))
 
 if(lktype.eq.2) cmean  = cmean + gmean
 
@@ -730,7 +773,7 @@ cstdev = sqrt(max(cstdev,0.0))
 !
 if(idbg.ge.3) then
       do i=1,na
-            write(ldbg,140) i,vra(i),r(i)
+            write(ldbg,140) i,vra(i),s(i)
       end do
 140        format(' Data ',i4,' value ',f8.4,' weight ',f8.4)
 !      if(lktype.eq.4) write(ldbg,141) lvm(ind),s(na+1)
@@ -741,6 +784,8 @@ end if
 !
 ! Finished Here:
 !
+deallocate(a,s,b,rr)
+
 end subroutine
 
 subroutine gauinv(p,xp,ierr)

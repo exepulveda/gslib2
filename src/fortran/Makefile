@@ -6,7 +6,7 @@ MKLROOT=/opt/intel/mkl/
 
 #/opt/intel/compilers_and_libraries_2018/mac/mkl/interfaces/include/intel64/lp64/ /opt/intel/mkl/lib/intel64_lin/
 
-FC_OPTIONS =  -fpp -I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include -g
+FC_OPTIONS =  -DTRACE_KS -fpp -I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include -g
 LINKER_OPTIONS =  -g ${MKLROOT}/lib/intel64/libmkl_lapack95_lp64.a -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl
 
 %.o: %.f90

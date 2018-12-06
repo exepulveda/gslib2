@@ -171,6 +171,7 @@ end do
 hsqd = sqdist(x1,y1,z1,x2,y2,z2,vrotmat(1,:,:))
 if(real(hsqd).lt.EPSLON) then
       cova = cmax
+      if (cova <0) stop "COVA < 0"
       return
 endif
 !
@@ -220,6 +221,7 @@ end do
 !
 ! Finished:
 !
+if (cova <0) stop "COVA < 0"
 return
 end subroutine
 

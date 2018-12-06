@@ -9,6 +9,9 @@ type sb_structure_type
   integer(kind=gik), allocatable :: nisb(:)
   integer(kind=gik) , allocatable :: ixsbtosr(:),iysbtosr(:),izsbtosr(:)
   integer(kind=gik)  :: nsbtosr
+  !for checking sizes
+  integer(kind=gik)  :: nisb_len,ixsbtosr_len,iysbtosr_len,izsbtosr_len
+  
 end type
 
 contains
@@ -35,9 +38,13 @@ implicit none
   MAXSB = min(grid%nodes(1),MAXSBX)*min(grid%nodes(2),MAXSBY)*min(grid%nodes(3),MAXSBZ)
   !determine
   allocate(sb_structure%nisb(MAXSB),stat = test)
+  
+  sb_structure%nisb_len = MAXSB
+  
 
+#ifdef TRACE                  
   print *,'setup_superblock::','before setsupr'
-
+#endif
   call setsupr( &
       grid%nodes(1),grid%starts(1),grid%sizes(1), &
       grid%nodes(2),grid%starts(2),grid%sizes(2), &
@@ -49,26 +56,34 @@ implicit none
       sb_structure%nysup,sb_structure%ymnsup,sb_structure%ysizsup, &
       sb_structure%nzsup,sb_structure%zmnsup,sb_structure%zsizsup)
 
+#ifdef TRACE                  
   print *,'setup_superblock::','after setsupr'
   print *,'setup_superblock xdim::',sb_structure%nxsup,sb_structure%xmnsup,sb_structure%xsizsup
   print *,'setup_superblock ydim::',sb_structure%nysup,sb_structure%ymnsup,sb_structure%ysizsup
   print *,'setup_superblock zdim::',sb_structure%nzsup,sb_structure%zmnsup,sb_structure%zsizsup
   print *,'setup_superblock::','MAXSB=',MAXSB
-
+#endif
   allocate(sb_structure%ixsbtosr(8 * MAXSB),stat = test)
   allocate(sb_structure%iysbtosr(8 * MAXSB),stat = test)
   allocate(sb_structure%izsbtosr(8 * MAXSB),stat = test)
 
+  sb_structure%ixsbtosr_len = size(sb_structure%ixsbtosr)
+  sb_structure%iysbtosr_len = size(sb_structure%iysbtosr)
+  sb_structure%izsbtosr_len = size(sb_structure%izsbtosr)
+
+#ifdef TRACE                  
   print *,'setup_superblock::','before picksup'
+#endif
   call picksup(sb_structure%nxsup,sb_structure%xsizsup, &
                sb_structure%nysup,sb_structure%ysizsup, &
                sb_structure%nzsup,sb_structure%zsizsup, &
                rotmat,radsqd, &
                sb_structure%nsbtosr,sb_structure%ixsbtosr, &
                sb_structure%iysbtosr,sb_structure%izsbtosr)
+#ifdef TRACE                  
   print *,'setup_superblock::','after picksup'
   print *,'setup_superblock::','nsbtosr',sb_structure%nsbtosr
-
+#endif
   setup_superblock = sb_structure
 end function
 
@@ -164,10 +179,11 @@ real(kind=fk) xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
 !
 ! MAIN Loop over all possible super blocks:
 !
+#ifdef TRACE
     print *, "picksup::n_sup",nxsup,nysup,nzsup
     print *, "picksup::_sizsup",xsizsup,ysizsup,zsizsup
     print *, "picksup::radsqd",radsqd,rotmat
-
+#endif
 
       nsbtosr = 0
       do i=-(nxsup-1),(nxsup-1)
@@ -201,8 +217,9 @@ real(kind=fk) xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
             end do
             end do
 
+#ifdef TRACE
             print *, "picksup::shortest",shortest
-
+#endif
 !
 ! Keep this super block if it is close enoutgh:
 !
@@ -473,6 +490,9 @@ logical inflag
             iysup = iy + iysbtosr(isup)
             izsup = iz + izsbtosr(isup)
 
+            if (isup > size(ixsbtosr)) stop "isup > size(ixsbtosr)"
+            if (isup > size(iysbtosr)) stop "isup > size(ixsbtosr)"
+            if (isup > size(izsbtosr)) stop "isup > size(ixsbtosr)"
 
 #ifdef TRACE                  
             print *,"srchsupr::isup",isup
@@ -487,6 +507,9 @@ logical inflag
 ! Figure out how many samples in this super block:
 !
             ii = ixsup + (iysup-1)*nxsup + (izsup-1)*nxsup*nysup
+
+            if (ii > size(nisb)) stop "ii > size(nisb)"
+
             if(ii.eq.1) then
                   nums = nisb(ii)
                   i    = 0
@@ -521,6 +544,10 @@ logical inflag
 ! Accept this sample:
 !
                   nclose_int = nclose_int + 1
+
+                  if (nclose_int > size(close)) stop "nclose_int > size(close)"
+                  if (nclose_int > size(tmp)) stop "nclose_int > size(tmp)"
+
                   close(nclose_int) = real(i)
                   tmp(nclose_int)  = real(hsqd)
  2          continue
@@ -528,6 +555,9 @@ logical inflag
 !
 ! Sort the nearby samples by distance to point being estimated:
 !
+
+      if (size(tmp) /= size(close)) stop "size(tmp) /= size(close)"
+
       call sortem_original(1,nclose_int,tmp,close)
       
       nclose = nclose_int
@@ -587,7 +617,6 @@ logical inflag
 !
 ! Finished:
 !
-    stop "EXE: search sb"
 end subroutine
 
 end module

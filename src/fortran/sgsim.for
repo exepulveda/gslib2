@@ -31,13 +31,8 @@ c
       module geostat
 
       real,allocatable      :: x(:),y(:),z(:),vr(:),wt(:),
-     +          vrtr(:),vrgtr(:),close(:),sec(:),sim(:),lvm(:),
-     +          tmp(:),covtab(:,:,:),cnodex(:),
-     +          cnodey(:),cnodez(:),cnodev(:),vra(:),vrea(:)
-      real*8,allocatable    :: r(:),rr(:),s(:),a(:)
-      integer,allocatable   :: nisb(:),icnode(:),order(:)
-      integer*2,allocatable :: ixnode(:),iynode(:),iznode(:),
-     +          ixsbtosr(:),iysbtosr(:),izsbtosr(:)
+     +          vrtr(:),vrgtr(:),sec(:),sim(:),lvm(:),
+     +          vra(:),vrea(:)
 
       end module
 c
@@ -451,13 +446,6 @@ c
                   stop
             end if
 c
-      allocate(close(MAXDAT),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 8: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
       allocate(sec(MAXDAT),stat = test)
             if(test.ne.0)then
                   write(*,*)'ERROR 9: Allocation failed',
@@ -479,57 +467,6 @@ c
                   stop
             end if
 c
-      allocate(tmp(MAXXYZ),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 12: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      MAXORD = MXYZ
-      if(MXYZ.lt.MAXCXY) MAXORD=MAXCXY
-      allocate(order(MAXORD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 13: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(covtab(MAXCTX,MAXCTY,MAXCTZ),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 14: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(cnodex(MAXNOD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 15: Allocation failed',
-     +                  ' due to insufficient memory.'
-                        stop
-            end if
-c
-      allocate(cnodey(MAXNOD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 16: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(cnodez(MAXNOD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 17: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(cnodev(MAXNOD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 18: Allocation failed',
-     +                  ' due to insufficient memory.'
-                        stop
-            end if
-c
       allocate(vra(MAXKR1),stat = test)
             if(test.ne.0)then
                   write(*,*)'ERROR 19: Allocation failed',
@@ -540,90 +477,6 @@ c
       allocate(vrea(MAXKR1),stat = test)
             if(test.ne.0)then
                   write(*,*)'ERROR 20: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(r(MAXKR1),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 21: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(rr(MAXKR1),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 22: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(s(MAXKR1),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 23: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(a(MAXKR2),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 24: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(nisb(MAXSB),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 25: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(icnode(MAXNOD),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 26: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(ixnode(MAXXYZ),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 27: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(iynode(MAXXYZ),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 28: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(iznode(MAXXYZ),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 29: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(ixsbtosr(8*MAXSB),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 30: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(iysbtosr(8*MAXSB),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 31: Allocation failed',
-     +                  ' due to insufficient memory.'
-                  stop
-            end if
-c
-      allocate(izsbtosr(8*MAXSB),stat = test)
-            if(test.ne.0)then
-                  write(*,*)'ERROR 32: Allocation failed',
      +                  ' due to insufficient memory.'
                   stop
             end if
