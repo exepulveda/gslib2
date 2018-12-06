@@ -1,27 +1,29 @@
-FC := gfortran
+FC := ifort
 
-all: gslib2
+.SUFFIXES: .o .f90
 
-gslib2: kinds_kit.o geometry.o variography.o searching.o sgsim.o sorting.o
-	$(FC) -g -shared -fPIC -o gslib2.so kinds_kit.o geometry.o variography.o sgsim.o
+MKLROOT=/opt/intel/compilers_and_libraries_2018/mac/mkl
 
-geometry.o: geometry.f90
-	$(FC) -c geometry.f90
+#/opt/intel/compilers_and_libraries_2018/mac/mkl/interfaces/include/intel64/lp64/
 
-searching.o: searching.f90
-	$(FC) -c searching.f90
+FC_OPTIONS = -I${MKLROOT}/interfaces/include/intel64/lp64 -I${MKLROOT}/interfaces/include -g
+LINKER_OPTIONS =  -g ${MKLROOT}/lib/libmkl_lapack95_lp64.a ${MKLROOT}/lib/libmkl_intel_lp64.a ${MKLROOT}/lib/libmkl_sequential.a ${MKLROOT}/lib/libmkl_core.a -lpthread -lm -ldl
 
-sorting.o: sorting.f90
-	$(FC) -c sorting.f90
+%.o: %.f90
+	$(FC) $(FC_OPTIONS) -c $<
 
-variography.o: variography.f90
-	$(FC) -c variography.f90
+all: gslib2 sgsim
 
-kinds_kit.o: kinds_kit.f90
-	$(FC) -c kinds_kit.f90
+OBJS= kinds_kit.o geometry.o variography.o sorting.o searching.o solvers.o simulation.o
 
-sgsim.o: sgsim.f90
-		$(FC) -c sgsim.f90
+gslib2: $(OBJS)
+#	$(FC) -g -shared -fPIC -o gslib2.so kinds_kit.o geometry.o variography.o simulation.o
+
+sgsim: gslib2 sgsim.o
+	$(FC) $(OBJS) sgsim.o -o sgsim $(LINKER_OPTIONS)
+
+sgsim.o: sgsim.for
+	$(FC) -c sgsim.for
 
 clean:
 	rm -fr *.mod *.o

@@ -9,7 +9,7 @@ real(fk), parameter :: zero_3d(3) = (/ 0.0,0.0,0.0 /)
 real(fk), parameter :: zero_2d(2) = (/ 0.0,0.0 /)
 
 type grid_type
-  integer(kind=ik) :: nodes(3)
+  integer(kind=gik) :: nodes(3)
   real(kind=fk) :: sizes(3)
   real(kind=fk) :: starts(3)
 end type
@@ -155,8 +155,8 @@ return
 end subroutine
 
 subroutine getindx(n,min,siz,loc,index,inflag)
-  integer(kind=ik),intent(in) ::   n
-  integer(kind=ik),intent(out) ::   index
+  integer(kind=gik),intent(in) ::   n
+  integer(kind=gik),intent(out) ::   index
   real(kind=fk),intent(in) ::      min,siz,loc
   logical,intent(out) ::    inflag
   !

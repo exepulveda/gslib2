@@ -184,7 +184,7 @@ do is=1,nst
 !
       if(ist.ne.1) then
             ir = min((irot+is-1),MAXROT)
-            hsqd=sqdist(x1,y1,z1,x2,y2,z2,vrotmat(:,:,ist))
+            hsqd=sqdist(x1,y1,z1,x2,y2,z2,vrotmat(ist,:,:))
       end if
       h = real(dsqrt(hsqd))
 !

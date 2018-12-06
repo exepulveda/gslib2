@@ -18,9 +18,9 @@ function setup_superblock(x,y,z,vr,sec,grid,sb_grid,rotmat,radsqd,MAXSBX,MAXSBY,
 use geometry, only: grid_type
 implicit none
 !arguments
-  real(kind=fk), intent(in) :: x(:),y(:),z(:)
-  real(kind=fk), intent(in) :: vr(:)
-  real(kind=fk), intent(in),optional :: sec(:,:)
+  real(kind=fk), intent(inout) :: x(:),y(:),z(:)
+  real(kind=fk), intent(inout) :: vr(:)
+  real(kind=fk), intent(inout),optional :: sec(:)
   type(grid_type), intent(in)  ::grid
   type(grid_type), intent(out) ::sb_grid
   real(kind=fk), intent(in) :: rotmat(:,:),radsqd
@@ -37,25 +37,34 @@ implicit none
   !determine
   allocate(sb_strcture%nisb(MAXSB),stat = test)
 
+  print *,'setup_superblock::','before setsupr'
+
   call setsupr( &
       grid%nodes(1),grid%starts(1),grid%sizes(1), &
       grid%nodes(2),grid%starts(2),grid%sizes(2), &
       grid%nodes(3),grid%starts(3),grid%sizes(3), &
       x,y,z, &
-      vr,sec,MAXSBX,MAXSBY,MAXSBZ,sb_strcture%nisb, &
+      vr,sec,MAXSBX,MAXSBY,MAXSBZ, &
+      sb_strcture%nisb, &
       sb_grid%nodes(1),sb_grid%starts(1),sb_grid%sizes(1), &
       sb_grid%nodes(2),sb_grid%starts(2),sb_grid%sizes(2), &
       sb_grid%nodes(3),sb_grid%starts(3),sb_grid%sizes(3))
 
-  allocate(sb_strcture%ixsbtosr(8 * MAXSB),stat = test)
-  allocate(sb_strcture%ixsbtosr(8 * MAXSB),stat = test)
-  allocate(sb_strcture%ixsbtosr(8 * MAXSB),stat = test)
+  print *,'setup_superblock::','after setsupr'
+  print *,'setup_superblock::','MAXSB=',MAXSB
 
+  allocate(sb_strcture%ixsbtosr(8 * MAXSB),stat = test)
+  allocate(sb_strcture%iysbtosr(8 * MAXSB),stat = test)
+  allocate(sb_strcture%izsbtosr(8 * MAXSB),stat = test)
+
+  print *,'setup_superblock::','before picksup'
   call picksup(sb_grid%nodes(1),sb_grid%sizes(1), &
                sb_grid%nodes(2),sb_grid%sizes(2), &
                sb_grid%nodes(3),sb_grid%sizes(3), &
-               rotmat,radsqd,sb_strcture%nsbtosr,sb_strcture%ixsbtosr, &
+               rotmat,radsqd, &
+               sb_strcture%nsbtosr,sb_strcture%ixsbtosr, &
                sb_strcture%iysbtosr,sb_strcture%izsbtosr)
+  print *,'setup_superblock::','after picksup'
 
   setup_superblock = sb_strcture
 end function
@@ -75,7 +84,7 @@ implicit none
   integer(kind=gik), intent(in) :: ndmax,noct
   real(kind=fk), intent(in) :: x(:),y(:),z(:)
   integer(kind=gik), intent(out) :: nclose
-  integer(kind=gik), intent(inout) :: close(:)
+  real(kind=fk), intent(inout) :: close(:)
   integer(kind=gik), intent(inout) :: infoct(:)
 
 !locals
@@ -266,14 +275,15 @@ subroutine setsupr( &
 !
 !-----------------------------------------------------------------------
 use geometry, only: getindx
+use sorting, only: sortem_original
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
 real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
-real(kind=fk), intent(in) :: x(:),y(:),z(:)
-real(kind=fk), intent(in) :: vr(:)
-real(kind=fk), intent(in),optional :: sec(:,:)
+real(kind=fk), intent(inout) :: x(:),y(:),z(:)
+real(kind=fk), intent(inout) :: vr(:)
+real(kind=fk), intent(inout),optional :: sec(:)
 integer(kind=gik), intent(in) :: MAXSBX,MAXSBy,MAXSBZ
 
 integer(kind=gik), allocatable, intent(out) :: nisb(:)
@@ -322,7 +332,7 @@ nd = size(x)
 ! Sort the data by ascending super block number:
 !
       nsort = 4 + nsec
-      call sortem(1,nd,tmp,nsort,x,y,z,vr,sec)
+      call sortem_original(1,nd,tmp,x,y,z,vr,sec)
 !
 ! Set up array nisb with the starting address of the block data:
 !
@@ -396,6 +406,7 @@ subroutine srchsupr( &
 !
 !-----------------------------------------------------------------------
 use geometry, only: getindx, sqdist
+use sorting, only: sortem_original
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nxsup,nysup,nzsup
@@ -412,9 +423,10 @@ integer(kind=gik),intent(in) :: nsbtosr, ixsbtosr(:),iysbtosr(:),izsbtosr(:)
 
 integer(kind=gik),intent(inout) :: nclose
 integer(kind=gik),intent(inout) :: infoct(:)
-integer(kind=gik),intent(inout) :: close(:)
+real(kind=fk),intent(inout) :: close(:)
 !locals
-real(kind=dk) hsqd,tmp(nclose),dx,dy,dz,h
+real(kind=dk) hsqd,dx,dy,dz,h
+real(kind=fk) tmp(nclose)
 integer inoct(8),ix,iy,iz,ixsup,iysup,izsup,i,ii,isup,j,iq,na,nt,nums,nclose_int
 logical inflag
 !
@@ -469,7 +481,7 @@ logical inflag
 !
 ! Sort the nearby samples by distance to point being estimated:
 !
-      call sortem(nclose_int,tmp,close)
+      call sortem_original(1,nclose_int,tmp,close)
 !
 ! If we aren't doing an octant search then just return:
 !

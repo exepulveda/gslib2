@@ -17,9 +17,11 @@ subroutine setup_ctable(ctable_st, &
   nx,ny,nz, &
   xmn,ymn,zmn, &
   xsiz,ysiz,zsiz, &
-  nst,c0,cc,aa,it,vrotmat, &
-  radsqd,nodmax,&
+  nst,c0,cc,aa,it,vrotmat, & !variogram
+  radsqd, & !search
+  nodmax,&
   MAXCTX,MAXCTY,MAXCTZ)
+implicit none
 !arguments
 integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
@@ -36,7 +38,7 @@ type(ctable_structure_type),intent(inout) :: ctable_st
   MAXCXY = MAXCTX * MAXCTY
   MAXXYZ = MAXCTX * MAXCTY * MAXCTZ
   allocate(ctable_st%covtab(MAXCTX,MAXCTY,MAXCTZ))
-  allocate(ctable_st%icnode(MAXNOD),stat = test)
+  allocate(ctable_st%icnode(nodmax),stat = test)
   allocate(ctable_st%ixnode(MAXXYZ),stat = test)
   allocate(ctable_st%iynode(MAXXYZ),stat = test)
   allocate(ctable_st%iznode(MAXXYZ),stat = test)
@@ -93,39 +95,90 @@ end subroutine
 
 subroutine sgsim_grid( &
     x,y,z, & ! coordinates
-    vr, &    ! variable
+    vr, sec,&    ! variable
     nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
-    ktype,radius,srotmat, & !search configuration
+    ktype,radius,sang1,sang2,sang3,sanis1,sanis2, & !search configuration
     ndmin,ndmax,noct,nodmax, & !simulated data search
-    nst,c0,cc,aa,it,vrotmat, & !variogram
-    ctable_st, & !cache for variogram
-    seed, &
+    nst,c0,cc,aa,it,ang1,ang2,ang3,anis1,anis2, & !variogram
+    seed,MAXSBX,MAXSBY,MAXSBZ,mxctx,mxcty,mxctz,nsim, &
     sim & !output
   )
-use geometry
+use geometry, only: grid_type, setrot
 use searching, only: sb_structure_type,setup_superblock,search_super_block
 implicit none
 !arguments
-real(kind=fk), intent(in) :: x(:),y(:),z(:)
-real(kind=fk), intent(in) :: vr(:)
+real(kind=fk), intent(inout) :: x(:),y(:),z(:)
+real(kind=fk), intent(inout) :: vr(:),sec(:)
 integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
 real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
-integer(kind=sk), intent(in) :: ktype
-real(kind=fk), intent(in) :: radius,srotmat(:,:)
-integer(kind=sk), intent(in) :: ndmin,ndmax,noct,nodmax
+integer(kind=gik), intent(in) :: ktype
+real(kind=fk), intent(in) :: radius,sang1,sang2,sang3,sanis1,sanis2
+integer(kind=gik), intent(in) :: ndmin,ndmax,noct,nodmax
 integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
-type(ctable_structure_type),intent(in) :: ctable_st
-integer(kind=sk), intent(in) :: seed
-real(kind=fk), intent(in) :: sim(:)
+real(kind=fk), intent(in) :: c0,cc(:),aa(:),ang1(:),ang2(:),ang3(:),anis1(:),anis2(:)
+integer(kind=gik), intent(in) :: seed,MAXSBX,MAXSBY,MAXSBZ,mxctx,mxcty,mxctz,nsim
+real(kind=fk), intent(inout) :: sim(:)
 
 !locals
 type(sb_structure_type) :: sb_strcture
+real(kind=fk) vrotmat(nst,3,3),srotmat(3,3)
+type(ctable_structure_type) :: ctable_st
+type(grid_type) :: grid,sb_grid
+integer(kind=gik) :: nmult = 0
+integer(kind=gik) :: sstrat = 0
+integer(kind=gik) :: nr,seed_size,max_int,rseed
+real :: realisation_seed(nsim)
+
+  max_int = huge(seed)
+  !with the given seed, generate seeds for each realisation
+  call random_number(realisation_seed)
 
 
-!sb_strcture = setup_superblock(x,y,z,vr,sec,grid,sb_grid,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+  grid.nodes = (/ nx,ny,nz /)
+  grid.sizes = (/ xsiz,ysiz,zsiz /)
+  grid.starts = (/ xmn,ymn,zmn /)
 
+  call setrot(sang1,sang2,sang3,sanis1,sanis2,srotmat)
+
+  print *,'sb_grid.nodes=',sb_grid.nodes
+  print *,'sb_grid.sizes=',sb_grid.sizes
+  print *,'sb_grid.starts=',sb_grid.starts
+  sb_strcture = setup_superblock(x,y,z,vr,sec,grid,sb_grid,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
+  print *,'sb_grid.nodes=',sb_grid.nodes
+  print *,'sb_grid.sizes=',sb_grid.sizes
+  print *,'sb_grid.starts=',sb_grid.starts
+
+  do nr=1,nst
+    call setrot(ang1(nr),ang2(nr),ang3(nr),anis1(nr),anis2(nr),vrotmat(nr,:,:))
+  end do
+
+  !ctable
+  call setup_ctable(ctable_st, &
+    nx,ny,nz, &
+    xmn,ymn,zmn, &
+    xsiz,ysiz,zsiz, &
+    nst,c0,cc,aa,it,vrotmat, & !variogram
+    radius*radius, & !search
+    nodmax,&
+    mxctx,mxcty,mxctz)
+
+  do nr=1,nsim
+    rseed = int(realisation_seed(nr)*max_int)
+    print *,'realisation=',nr,'seed=',rseed
+    call sgsim_realizarion_grid( &
+      x,y,z, & ! coordinates
+      vr, &    ! variable
+      nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
+      ktype,radius,srotmat, & !search configuration
+      ndmin,ndmax,noct, & !
+      nodmax,nmult, sstrat, & !simulated data search
+      sb_strcture, &
+      nst,c0,cc,aa,it,vrotmat, & !variogram
+      ctable_st,&
+      rseed,&
+      sim) !output
+  end do
 end subroutine
 
 subroutine sgsim_realizarion_grid( &
@@ -142,6 +195,7 @@ subroutine sgsim_realizarion_grid( &
     sim) !output
 use geometry
 use searching, only: sb_structure_type,setup_superblock,search_super_block
+use sorting, only: sortem_original
 implicit none
 !arguments
 real(kind=fk), intent(in) :: x(:),y(:),z(:)
@@ -160,20 +214,23 @@ integer(kind=gik), intent(in) :: seed
 real(kind=fk), intent(inout) :: sim(:)
 !locals
 real      var(10)
-real*8    p,acorni,cp,oldcp,w
+real*8    p,cp,oldcp,w
 logical   testind, trace
 integer nxyz,imult,ind,id,in
 integer ix,iy,iz,nnx,nny,nnz,nd,nxy
 real    xx,yy,zz,test,test2
-integer(kind=gik) order(nx*ny*nz)
+real(kind=fk) order(nx*ny*nz)
 real(kind=dk),allocatable :: A(:,:),b(:),s(:)
 real(kind=fk) :: radsqd
 real(kind=dk) :: xp
 real    gmean,cmean,cstdev
 integer id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
-integer(kind=gik) nclose,close(ndmax+nodmax),infoct(8),lktype
+integer(kind=gik) nclose,infoct(8),lktype
+real(kind=fk) close(ndmax+nodmax)
 integer(kind=gik) ncnode,icnode(nodmax) !results of searching simulated nodes
 real(kind=fk) :: cnodex(nodmax),cnodey(nodmax),cnodez(nodmax),cnodev(nodmax)
+integer :: ne,isim,seed_size
+real*8 :: av,ss,simval
 
 radsqd = radius  * radius
 idbg = 0
@@ -182,11 +239,18 @@ nd = size(vr)
 nxy = nx*ny
 nxyz = nxy*nz
 
+print *,"seed",seed
+!set seed
+seed_size=1
+call random_seed(size=seed_size)
+call random_seed(put=(/ seed /))
+
 !
 ! Work out a random path for this realization:
 !
       do ind=1,nxyz
-            sim(ind)   = real(acorni(idum))
+            !sim(ind)   = real(acorni(idum))
+            call random_number(sim(ind))
             order(ind) = ind
       end do
 !
@@ -214,8 +278,8 @@ nxyz = nxy*nz
                   end do
             end do
       end if
-      call sortem(1,nxyz,sim,order)
-!
+      call sortem_original(1,nxyz,sim,order)
+
 ! Initialize the simulation:
 !
       do ind=1,nxyz
@@ -324,12 +388,14 @@ nxyz = nxy*nz
 !
       lktype = ktype
       if(ktype.eq.1.and.(nclose+ncnode).lt.4)lktype=0
-      call krige(ix,iy,iz,xx,yy,zz,lktype,gmean,nclose,close,ncnode,ctable_st,cmean,cstdev)
+      call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,nclose,close,ncnode, &
+                 nst,c0,cc,aa,it,vrotmat,ctable_st,cmean,cstdev)
     endif
 !
 ! Draw a random number and assign a value to this node:
 !
-    p = acorni(idum)
+    !p = acorni(idum)
+    call random_number(p)
     call gauinv(p,xp,ierr)
     sim(index) = xp * cstdev + cmean
     if(idbg.ge.3) write(ldbg,141) p,sim(index)
@@ -344,11 +410,36 @@ nxyz = nxy*nz
                     '         conditional stdev:  ',f12.5,/,  &
                     '         simulated value:    ',f12.5)
     endif
+
 !
 ! END MAIN LOOP OVER NODES:
 !
 5                continue
   end do
+
+  ne = 0
+  av = 0.0
+  ss = 0.0
+  do ind=1,nxyz
+        simval = sim(ind)
+        if(simval.gt.-9.0.and.simval.lt.9.0) then
+              ne = ne + 1
+              av = av + simval
+              ss = ss + simval*simval
+        end if
+        !write(lout,'(g14.8)') simval
+  end do
+
+  av = av / max(real(ne),1.0)
+  ss =(ss / max(real(ne),1.0)) - av * av
+  write(ldbg,111) isim,ne,av,ss
+  write(*,   111) isim,ne,av,ss
+111        format(/,' Realization ',i3,': number   = ',i8,/, &
+              '                  mean     = ',f12.4,       &
+              ' (close to 0.0?)',/,                        &
+              '                  variance = ',f12.4,       &
+              ' (close to gammabar(V,V)? approx. 1.0)',/)
+
 !
 ! Do we need to reassign the data to the grid nodes?
 !
@@ -367,27 +458,37 @@ nxyz = nxy*nz
   end if
 end subroutine
 
-subroutine krige( &
+subroutine krige( x,y,z, vra, &
       ix,iy,iz,xx,yy,zz, &
       ktype, &
       gmean, &
       nclose,close,ncnode, & !conditioning data
+      nst,c0,cc,aa,it,vrotmat, & !variogram
       ctable_st, &
       cmean, &
       cstdev)
+use variography, only: cova3
+use solvers, only: system_solver
+implicit none
 !arguments
+real(kind=fk), intent(in) :: x(:),y(:),z(:),vra(:)
 integer(kind=gik), intent(in) :: ix,iy,iz
 real(kind=fk), intent(in) :: xx,yy,zz
 real(kind=fk), intent(out) :: gmean
 integer(kind=gik), intent(in) :: ktype
-integer(kind=gik), intent(in) :: nclose,close(:),ncnode
+integer(kind=gik), intent(in) :: nclose,ncnode
+real(kind=fk), intent(in) :: close(:)
 type(ctable_structure_type),intent(in) :: ctable_st
+integer(kind=gik), intent(in) ::nst,it(:)
+real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
 real(kind=fk), intent(out) :: cmean,cstdev
 !locals
 logical first
-integer na,neq,i,j,k,ierr
-real(kind=fk), allocatable :: a(:,:),b(:),s(:),r(:),rr(:)
+integer na,neq,i,j,k,ierr,idbg,ie,is,ising,ldbg,indexi,indexj
+real(kind=fk), allocatable :: a(:,:),b(:),s(:),r(:),rr(:),ipiv(:)
 integer(kind=gik) :: lktype,ind
+integer :: info
+real(kind=fk) :: cbb,cmax,cov,sumwts
 !
 ! Size of the kriging system:
 !
@@ -401,60 +502,66 @@ if(lktype.eq.2) neq = na
 if(lktype.eq.3) neq = na + 2
 if(lktype.eq.4) neq = na + 1
 if(lktype.ge.3) then
-      ind = ix + (iy-1)*nx + (iz-1)*nxy
-      if(lvm(ind).le.-6.0.or.lvm(ind).ge.6.0) then
-            lktype = 0
-            go to 33
-      end if
+      ! ind = ix + (iy-1)*nx + (iz-1)*nxy
+      ! if(lvm(ind).le.-6.0.or.lvm(ind).ge.6.0) then
+      !       lktype = 0
+      !       go to 33
+      ! end if
 end if
 
-allocate(a(na,na),b(na),s(na),r(na),rr(na))
+allocate(a(neq,neq),b(neq),s(neq),r(neq),rr(neq),ipiv(neq))
 !
 ! Set up kriging matrices:
 !
 !samples part
 do j=1,nclose
+  indexj  = int(close(j))
   do i=j,nclose
-    call cova3(x(close(i)),y(close(i)),z(close(i)),&
-               x(close(j)),y(close(j)),z(close(j)),&
-               nst,c0,it,cc,aa,rotmat,cmax,cov)
+    indexi  = int(close(i))
+    call cova3(x(indexi),y(indexi),z(indexi),&
+               x(indexj),y(indexj),z(indexj),&
+               nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
 
   end do
 
-  call cova3(xx,yy,zz,x(close(i)),y(close(i)),z(close(i)),&
-             nst,c0,it,cc,aa,rotmat,cmax,cov)
+  call cova3(xx,yy,zz,x(indexi),y(indexi),z(indexi),&
+             nst,c0,it,cc,aa,vrotmat,cmax,cov)
   b(j) = dble(cov)
 
 end do
 
 !simulated part
 do j=nclose+1,na
+  indexj  = int(close(j))
   do i=1,nclose+1,na
-    call cova3(x(close(i)),y(close(i)),z(close(i)),&
-               x(close(j)),y(close(j)),z(close(j)),&
-               nst,c0,it,cc,aa,rotmat,cmax,cov)
+    indexj  = int(close(i))
+    call cova3(x(indexi),y(indexi),z(indexi),&
+               x(indexj),y(indexj),z(indexj),&
+               nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
 
   end do
   call cova3(xx,yy,zz,xx,yy,zz,&
-             nst,c0,it,cc,aa,rotmat,cmax,cov)
+             nst,c0,it,cc,aa,vrotmat,cmax,cov)
   b(j) = dble(cov)
 end do
 
 !samples against simulated part
 do j=1,nclose
+  indexj  = int(close(j))
   do i=1,nclose+1,na
-    call cova3(x(close(i)),y(close(i)),z(close(i)),&
-               x(close(j)),y(close(j)),z(close(j)),&
-               nst,c0,it,cc,aa,rotmat,cmax,cov)
+    indexi  = int(close(i))
+    call cova3(x(indexi),y(indexi),z(indexi),&
+               x(indexj),y(indexj),z(indexj),&
+               nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
   end do
   call cova3(xx,yy,zz,xx,yy,zz,&
-             nst,c0,it,cc,aa,rotmat,cmax,cov)
+             nst,c0,it,cc,aa,vrotmat,cmax,cov)
   b(j) = dble(cov)
 end do
 
@@ -531,7 +638,7 @@ if(neq.eq.1.and.lktype.ne.3) then
       s(1)  = r(1) / a(1,1)
       ising = 0
 else
-      call ksol(a,r,s,ising)
+  call system_solver(a,r,.true.,info)
 endif
 !
 ! Write a warning if the matrix is singular:
@@ -567,9 +674,9 @@ if(lktype.eq.1) cstdev = cstdev - real(s(na+1))
 if(lktype.eq.2) cmean  = cmean + gmean
 
 if(lktype.eq.4) then
-      ind    = ix + (iy-1)*nx + (iz-1)*nxy
-      cmean  = cmean  + real(s(na+1))*lvm(ind)
-      cstdev = cstdev - real(s(na+1) *rr(na+1))
+      ! ind    = ix + (iy-1)*nx + (iz-1)*nxy
+      ! cmean  = cmean  + real(s(na+1))*lvm(ind)
+      ! cstdev = cstdev - real(s(na+1) *rr(na+1))
 end if
 !
 ! Error message if negative variance:
@@ -587,8 +694,8 @@ if(idbg.ge.3) then
             write(ldbg,140) i,vra(i),s(i)
       end do
 140        format(' Data ',i4,' value ',f8.4,' weight ',f8.4)
-      if(lktype.eq.4) write(ldbg,141) lvm(ind),s(na+1)
-141        format(' Sec Data  value ',f8.4,' weight ',f8.4)
+!      if(lktype.eq.4) write(ldbg,141) lvm(ind),s(na+1)
+!141        format(' Sec Data  value ',f8.4,' weight ',f8.4)
       write(ldbg,142) gmean,cmean,cstdev
 142        format(' Global mean ',f8.4,' conditional ',f8.4,' std dev ',f8.4)
 end if
@@ -655,6 +762,8 @@ subroutine ctable( &
     MAXCTX,MAXCTY,MAXCTZ,&
     covtab,nlooku,ixnode,iynode,iznode)
 use variography, only: cova3
+use sorting, only: sortem_original
+use geometry, only: sqdist
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nx,ny,nz
@@ -676,7 +785,7 @@ real(kind=fk)::cmax,cbb
 integer nctx,ncty,nctz,i,j,k,MAXCXY,ic,jc,kc,il,ix,iy,iz,loc
 real xx,yy,zz
 
-real*8    hsqd,sqdist
+real(kind=dk)    hsqd
 
 MAXCXY = MAXCTX * MAXCTY
 
@@ -712,7 +821,7 @@ do k=-nctz,nctz
 zz = k * zsiz
 kc = nctz + 1 + k
       call cova3(0.0,0.0,0.0,xx,yy,zz,nst,c0,it,cc,aa,vrotmat,cmax,covtab(ic,jc,kc))
-      hsqd = sqdist(0.0,0.0,0.0,xx,yy,zz,vrotmat(:,:,1))
+      hsqd = sqdist(0.0,0.0,0.0,xx,yy,zz,vrotmat(1,:,:))
       if(real(hsqd).le.radsqd) then
             nlooku         = nlooku + 1
 !
@@ -731,7 +840,7 @@ end do
 ! first. Note: the "loc" array is used because I didn't want to make
 ! special allowance for 2 byte integers in the sorting subroutine:
 !
-call sortem(1,nlooku,tmp,order)
+call sortem_original(1,nlooku,tmp,order)
 do il=1,nlooku
       loc = int(order(il))
       iz  = int((loc-1)/MAXCXY) + 1

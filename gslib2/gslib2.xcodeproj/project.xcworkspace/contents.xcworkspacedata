@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:../../src/fortran/geometry.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/kinds_kit.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/searching.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/sgsim.for">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/simulation.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/solvers.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/sorting.f90">
+   </FileRef>
+   <FileRef
+      location = "group:../../src/fortran/variography.f90">
+   </FileRef>
+   <FileRef
+      location = "self:gslib2.xcodeproj">
+   </FileRef>
+</Workspace>
