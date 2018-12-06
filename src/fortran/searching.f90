@@ -14,7 +14,7 @@ end type
 contains
 
 !high level functions
-function setup_superblock(x,y,z,vr,sec,grid,sb_grid,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+function setup_superblock(x,y,z,vr,sec,grid,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
 use geometry, only: grid_type
 implicit none
 !arguments
@@ -22,20 +22,19 @@ implicit none
   real(kind=fk), intent(inout) :: vr(:)
   real(kind=fk), intent(inout),optional :: sec(:)
   type(grid_type), intent(in)  ::grid
-  type(grid_type), intent(out) ::sb_grid
   real(kind=fk), intent(in) :: rotmat(:,:),radsqd
   integer(kind=gik), intent(in) :: MAXSBX,MAXSBy,MAXSBZ
 
 !return
   type(sb_structure_type) :: setup_superblock
 !locals
-  type(sb_structure_type) :: sb_strcture
-  integer MAXSB
-  integer test
+  type(sb_structure_type) :: sb_structure
+  integer(kind=gik) MAXSB
+  integer(kind=gik) test
 
   MAXSB = min(grid%nodes(1),MAXSBX)*min(grid%nodes(2),MAXSBY)*min(grid%nodes(3),MAXSBZ)
   !determine
-  allocate(sb_strcture%nisb(MAXSB),stat = test)
+  allocate(sb_structure%nisb(MAXSB),stat = test)
 
   print *,'setup_superblock::','before setsupr'
 
@@ -45,33 +44,37 @@ implicit none
       grid%nodes(3),grid%starts(3),grid%sizes(3), &
       x,y,z, &
       vr,sec,MAXSBX,MAXSBY,MAXSBZ, &
-      sb_strcture%nisb, &
-      sb_grid%nodes(1),sb_grid%starts(1),sb_grid%sizes(1), &
-      sb_grid%nodes(2),sb_grid%starts(2),sb_grid%sizes(2), &
-      sb_grid%nodes(3),sb_grid%starts(3),sb_grid%sizes(3))
+      sb_structure%nisb, &
+      sb_structure%nxsup,sb_structure%xmnsup,sb_structure%xsizsup, &
+      sb_structure%nysup,sb_structure%ymnsup,sb_structure%ysizsup, &
+      sb_structure%nzsup,sb_structure%zmnsup,sb_structure%zsizsup)
 
   print *,'setup_superblock::','after setsupr'
+  print *,'setup_superblock xdim::',sb_structure%nxsup,sb_structure%xmnsup,sb_structure%xsizsup
+  print *,'setup_superblock ydim::',sb_structure%nysup,sb_structure%ymnsup,sb_structure%ysizsup
+  print *,'setup_superblock zdim::',sb_structure%nzsup,sb_structure%zmnsup,sb_structure%zsizsup
   print *,'setup_superblock::','MAXSB=',MAXSB
 
-  allocate(sb_strcture%ixsbtosr(8 * MAXSB),stat = test)
-  allocate(sb_strcture%iysbtosr(8 * MAXSB),stat = test)
-  allocate(sb_strcture%izsbtosr(8 * MAXSB),stat = test)
+  allocate(sb_structure%ixsbtosr(8 * MAXSB),stat = test)
+  allocate(sb_structure%iysbtosr(8 * MAXSB),stat = test)
+  allocate(sb_structure%izsbtosr(8 * MAXSB),stat = test)
 
   print *,'setup_superblock::','before picksup'
-  call picksup(sb_grid%nodes(1),sb_grid%sizes(1), &
-               sb_grid%nodes(2),sb_grid%sizes(2), &
-               sb_grid%nodes(3),sb_grid%sizes(3), &
+  call picksup(sb_structure%nxsup,sb_structure%xsizsup, &
+               sb_structure%nysup,sb_structure%ysizsup, &
+               sb_structure%nzsup,sb_structure%zsizsup, &
                rotmat,radsqd, &
-               sb_strcture%nsbtosr,sb_strcture%ixsbtosr, &
-               sb_strcture%iysbtosr,sb_strcture%izsbtosr)
+               sb_structure%nsbtosr,sb_structure%ixsbtosr, &
+               sb_structure%iysbtosr,sb_structure%izsbtosr)
   print *,'setup_superblock::','after picksup'
+  print *,'setup_superblock::','nsbtosr',sb_structure%nsbtosr
 
-  setup_superblock = sb_strcture
+  setup_superblock = sb_structure
 end function
 
 subroutine search_super_block( &
     xloc,yloc,zloc,radsqd,rotmat, &
-    sb_strcture, &
+    sb_structure, &
     ndmax,noct, &
     x,y,z, &
     nclose,close,infoct)
@@ -80,7 +83,7 @@ implicit none
 !arguments
   real(kind=fk), intent(in) :: xloc,yloc,zloc
   real(kind=fk), intent(in) :: rotmat(:,:),radsqd
-  type(sb_structure_type) :: sb_strcture
+  type(sb_structure_type), intent(in) :: sb_structure
   integer(kind=gik), intent(in) :: ndmax,noct
   real(kind=fk), intent(in) :: x(:),y(:),z(:)
   integer(kind=gik), intent(out) :: nclose
@@ -93,14 +96,14 @@ implicit none
 
   call srchsupr( &
       xloc,yloc,zloc,radsqd,rotmat, &
-      sb_strcture%nsbtosr, &
-      sb_strcture%ixsbtosr,sb_strcture%iysbtosr,sb_strcture%izsbtosr, &
+      sb_structure%nsbtosr, &
+      sb_structure%ixsbtosr,sb_structure%iysbtosr,sb_structure%izsbtosr, &
       noct, &
       x,y,z,&
-      sb_strcture%nisb, &
-      sb_strcture%nxsup,sb_strcture%xmnsup,sb_strcture%xsizsup, &
-      sb_strcture%nysup,sb_strcture%ymnsup,sb_strcture%ysizsup, &
-      sb_strcture%nzsup,sb_strcture%zmnsup,sb_strcture%zsizsup, &
+      sb_structure%nisb, &
+      sb_structure%nxsup,sb_structure%xmnsup,sb_structure%xsizsup, &
+      sb_structure%nysup,sb_structure%ymnsup,sb_structure%ysizsup, &
+      sb_structure%nzsup,sb_structure%zmnsup,sb_structure%zsizsup, &
       nclose,close,infoct)
 
 end subroutine
@@ -156,11 +159,16 @@ integer(kind=gik), intent(inout) :: ixsbtosr(:),iysbtosr(:),izsbtosr(:)
 integer(kind=gik), intent(inout) :: nsbtosr
 
 !locals
-integer i,j,k,i1,j1,k1,i2,j2,k2
-real xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
+integer(kind=gik) i,j,k,i1,j1,k1,i2,j2,k2
+real(kind=fk) xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
 !
 ! MAIN Loop over all possible super blocks:
 !
+    print *, "picksup::n_sup",nxsup,nysup,nzsup
+    print *, "picksup::_sizsup",xsizsup,ysizsup,zsizsup
+    print *, "picksup::radsqd",radsqd,rotmat
+
+
       nsbtosr = 0
       do i=-(nxsup-1),(nxsup-1)
       do j=-(nysup-1),(nysup-1)
@@ -192,11 +200,15 @@ real xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
             end do
             end do
             end do
+
+            print *, "picksup::shortest",shortest
+
 !
 ! Keep this super block if it is close enoutgh:
 !
             if(real(shortest).le.radsqd) then
                   nsbtosr = nsbtosr + 1
+                  if (nsbtosr > size(ixsbtosr)) STOP "nsbtosr > size(ixsbtosr)"
                   ixsbtosr(nsbtosr) = i
                   iysbtosr(nsbtosr) = j
                   izsbtosr(nsbtosr) = k
@@ -204,16 +216,22 @@ real xo,yo,zo,xdis,ydis,zdis,hsqd,shortest
       end do
       end do
       end do
+      
 !
 ! Finished:
 !
 end subroutine
 
 subroutine setsupr( &
-    nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,x,y,z, &
+    nx,xmn,xsiz,&
+    ny,ymn,ysiz,&
+    nz,zmn,zsiz,&
+    x,y,z, &
     vr,sec,MAXSBX,MAXSBY, &
-    MAXSBZ,nisb,nxsup,xmnsup,xsizsup,nysup,ymnsup, &
-    ysizsup,nzsup,zmnsup,zsizsup)
+    MAXSBZ,nisb,&
+    nxsup,xmnsup,xsizsup,&
+    nysup,ymnsup,ysizsup,&
+    nzsup,zmnsup,zsizsup)
 !-----------------------------------------------------------------------
 !
 !           Establish Super Block Search Limits and Sort Data
@@ -293,7 +311,7 @@ real(kind=fk), intent(out) :: xsizsup,ysizsup,zsizsup
 
 !locals
 real(kind=fk) tmp(size(vr))
-integer i,nd,nsec,ii,ix,iy,iz,nsort
+integer(kind=gik) i,nd,nsec,ii,ix,iy,iz,nsort
 logical inflag
 
 nd = size(x)
@@ -347,8 +365,10 @@ end subroutine
 subroutine srchsupr( &
     xloc,yloc,zloc,radsqd,rotmat, &
     nsbtosr,ixsbtosr,iysbtosr,izsbtosr,noct, &
-    x,y,z,nisb,nxsup,xmnsup,xsizsup, &
-    nysup,ymnsup,ysizsup,nzsup,zmnsup,zsizsup, &
+    x,y,z,nisb,&
+    nxsup,xmnsup,xsizsup, &
+    nysup,ymnsup,ysizsup, &
+    nzsup,zmnsup,zsizsup, &
     nclose,close,infoct)
 !-----------------------------------------------------------------------
 !
@@ -426,8 +446,8 @@ integer(kind=gik),intent(inout) :: infoct(:)
 real(kind=fk),intent(inout) :: close(:)
 !locals
 real(kind=dk) hsqd,dx,dy,dz,h
-real(kind=fk) tmp(nclose)
-integer inoct(8),ix,iy,iz,ixsup,iysup,izsup,i,ii,isup,j,iq,na,nt,nums,nclose_int
+real(kind=fk) tmp(size(close)) !size 
+integer(kind=gik) inoct(8),ix,iy,iz,ixsup,iysup,izsup,i,ii,isup,j,iq,na,nt,nums,nclose_int
 logical inflag
 !
 ! Determine the super block location of point being estimated:
@@ -438,6 +458,12 @@ logical inflag
 !
 ! Loop over all the possible Super Blocks:
 !
+#ifdef TRACE                  
+    print *,"srchsupr::nsbtosr",nsbtosr,xloc,yloc,zloc,ix,iy,iz
+    print *,"srchsupr::n_sup",nxsup,nysup,nzsup
+#endif
+
+
       nclose_int = 0
       do 1 isup=1,nsbtosr
 !
@@ -446,6 +472,14 @@ logical inflag
             ixsup = ix + ixsbtosr(isup)
             iysup = iy + iysbtosr(isup)
             izsup = iz + izsbtosr(isup)
+
+
+#ifdef TRACE                  
+            print *,"srchsupr::isup",isup
+            print *,"srchsupr::i_sup",ixsup,iysup,izsup
+            print *,"srchsupr::i_sbtosr",ixsbtosr(isup),iysbtosr(isup),izsbtosr(isup)
+#endif
+
             if(ixsup.le.0.or.ixsup.gt.nxsup.or. &
                iysup.le.0.or.iysup.gt.nysup.or. &
                izsup.le.0.or.izsup.gt.nzsup) go to 1
@@ -460,6 +494,8 @@ logical inflag
                   nums = nisb(ii) - nisb(ii-1)
                   i    = nisb(ii-1)
             endif
+
+
 !
 ! Loop over all the data in this super block:
 !
@@ -469,6 +505,17 @@ logical inflag
 ! Check squared distance:
 !
                   hsqd = sqdist(xloc,yloc,zloc,x(i),y(i),z(i),rotmat)
+                  
+#ifdef TRACE                  
+                  
+                  print *,"loc",xloc,yloc,zloc
+                  print *,"x(i)",i,x(i),y(i),z(i)
+                  print *,"rotmat",rotmat
+                  print *,"hsqd",hsqd
+                  print *,"radsqd",radsqd
+                  print *,"nclose_int",nclose_int
+#endif
+                  
                   if(real(hsqd).gt.radsqd) go to 2
 !
 ! Accept this sample:
@@ -482,6 +529,10 @@ logical inflag
 ! Sort the nearby samples by distance to point being estimated:
 !
       call sortem_original(1,nclose_int,tmp,close)
+      
+      nclose = nclose_int
+
+
 !
 ! If we aren't doing an octant search then just return:
 !
@@ -536,6 +587,7 @@ logical inflag
 !
 ! Finished:
 !
+    stop "EXE: search sb"
 end subroutine
 
 end module

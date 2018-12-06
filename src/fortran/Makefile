@@ -2,12 +2,12 @@ FC := ifort
 
 .SUFFIXES: .o .f90
 
-MKLROOT=/opt/intel/compilers_and_libraries_2018/mac/mkl
+MKLROOT=/opt/intel/mkl/
 
-#/opt/intel/compilers_and_libraries_2018/mac/mkl/interfaces/include/intel64/lp64/
+#/opt/intel/compilers_and_libraries_2018/mac/mkl/interfaces/include/intel64/lp64/ /opt/intel/mkl/lib/intel64_lin/
 
-FC_OPTIONS = -I${MKLROOT}/interfaces/include/intel64/lp64 -I${MKLROOT}/interfaces/include -g
-LINKER_OPTIONS =  -g ${MKLROOT}/lib/libmkl_lapack95_lp64.a ${MKLROOT}/lib/libmkl_intel_lp64.a ${MKLROOT}/lib/libmkl_sequential.a ${MKLROOT}/lib/libmkl_core.a -lpthread -lm -ldl
+FC_OPTIONS =  -fpp -I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include -g
+LINKER_OPTIONS =  -g ${MKLROOT}/lib/intel64/libmkl_lapack95_lp64.a -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_sequential.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl
 
 %.o: %.f90
 	$(FC) $(FC_OPTIONS) -c $<

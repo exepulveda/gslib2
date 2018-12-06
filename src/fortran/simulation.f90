@@ -20,7 +20,7 @@ subroutine setup_ctable(ctable_st, &
   nst,c0,cc,aa,it,vrotmat, & !variogram
   radsqd, & !search
   nodmax,&
-  MAXCTX,MAXCTY,MAXCTZ)
+  MAXCTX,MAXCTY,MAXCTZ,cbb)
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nx,ny,nz
@@ -31,6 +31,7 @@ integer(kind=gik), intent(in) ::nst,it(:),nodmax
 real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
 integer(kind=gik), intent(in) ::MAXCTX,MAXCTY,MAXCTZ
 type(ctable_structure_type),intent(inout) :: ctable_st
+real(kind=fk),intent(out) :: cbb
 !locals
   integer(kind=gik) MAXXYZ,MAXCXY
   integer test
@@ -54,7 +55,7 @@ type(ctable_structure_type),intent(inout) :: ctable_st
       nst,c0,cc,aa,it,vrotmat, &
       radsqd,nodmax,&
       MAXCTX,MAXCTY,MAXCTZ,&
-      ctable_st%covtab,ctable_st%nlooku,ctable_st%ixnode,ctable_st%iynode,ctable_st%iznode)
+      ctable_st%covtab,ctable_st%nlooku,ctable_st%ixnode,ctable_st%iynode,ctable_st%iznode,cbb)
 end subroutine
 
 subroutine search_ctable(ix,iy,iz,sim, &
@@ -62,6 +63,7 @@ subroutine search_ctable(ix,iy,iz,sim, &
     noct,nodmax, &
     ctable_st, &
     ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
+implicit none
 !arguments
   integer(kind=gik), intent(in) :: ix,iy,iz
   real(kind=fk), intent(in) ::sim(:)
@@ -76,9 +78,9 @@ subroutine search_ctable(ix,iy,iz,sim, &
   integer(kind=gik) :: nctx,ncty,nctz
 
 
-  nctx = min(((MAXCTX-1)/2),(nx-1))
-  ncty = min(((MAXCTY-1)/2),(ny-1))
-  nctz = min(((MAXCTZ-1)/2),(nz-1))
+  nctx = min(((ctable_st%MAXCTX-1)/2),(nx-1))
+  ncty = min(((ctable_st%MAXCTY-1)/2),(ny-1))
+  nctz = min(((ctable_st%MAXCTZ-1)/2),(nz-1))
 
 
   call srchnd(ix,iy,iz, &
@@ -121,14 +123,14 @@ integer(kind=gik), intent(in) :: seed,MAXSBX,MAXSBY,MAXSBZ,mxctx,mxcty,mxctz,nsi
 real(kind=fk), intent(inout) :: sim(:)
 
 !locals
-type(sb_structure_type) :: sb_strcture
+type(sb_structure_type) :: sb_structure
 real(kind=fk) vrotmat(nst,3,3),srotmat(3,3)
 type(ctable_structure_type) :: ctable_st
 type(grid_type) :: grid,sb_grid
 integer(kind=gik) :: nmult = 0
 integer(kind=gik) :: sstrat = 0
 integer(kind=gik) :: nr,seed_size,max_int,rseed
-real :: realisation_seed(nsim)
+real(kind=fk) :: realisation_seed(nsim),cbb
 
   max_int = huge(seed)
   !with the given seed, generate seeds for each realisation
@@ -141,13 +143,7 @@ real :: realisation_seed(nsim)
 
   call setrot(sang1,sang2,sang3,sanis1,sanis2,srotmat)
 
-  print *,'sb_grid.nodes=',sb_grid.nodes
-  print *,'sb_grid.sizes=',sb_grid.sizes
-  print *,'sb_grid.starts=',sb_grid.starts
-  sb_strcture = setup_superblock(x,y,z,vr,sec,grid,sb_grid,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
-  print *,'sb_grid.nodes=',sb_grid.nodes
-  print *,'sb_grid.sizes=',sb_grid.sizes
-  print *,'sb_grid.starts=',sb_grid.starts
+  sb_structure = setup_superblock(x,y,z,vr,sec,grid,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
 
   do nr=1,nst
     call setrot(ang1(nr),ang2(nr),ang3(nr),anis1(nr),anis2(nr),vrotmat(nr,:,:))
@@ -161,7 +157,7 @@ real :: realisation_seed(nsim)
     nst,c0,cc,aa,it,vrotmat, & !variogram
     radius*radius, & !search
     nodmax,&
-    mxctx,mxcty,mxctz)
+    mxctx,mxcty,mxctz,cbb)
 
   do nr=1,nsim
     rseed = int(realisation_seed(nr)*max_int)
@@ -173,8 +169,8 @@ real :: realisation_seed(nsim)
       ktype,radius,srotmat, & !search configuration
       ndmin,ndmax,noct, & !
       nodmax,nmult, sstrat, & !simulated data search
-      sb_strcture, &
-      nst,c0,cc,aa,it,vrotmat, & !variogram
+      sb_structure, &
+      nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
       ctable_st,&
       rseed,&
       sim) !output
@@ -188,8 +184,8 @@ subroutine sgsim_realizarion_grid( &
     ktype,radius,srotmat, & !search configuration
     ndmin,ndmax,noct, & !
     nodmax,nmult, sstrat, & !simulated data search
-    sb_strcture, &
-    nst,c0,cc,aa,it,vrotmat, & !variogram
+    sb_structure, &
+    nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
     ctable_st,&
     seed,&
     sim) !output
@@ -206,31 +202,31 @@ real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
 integer(kind=gik), intent(in) :: ktype
 real(kind=fk), intent(in) :: radius,srotmat(:,:)
 integer(kind=gik), intent(in) :: ndmin,ndmax,noct,nodmax,nmult,sstrat
-type(sb_structure_type),optional :: sb_strcture
+type(sb_structure_type),intent(in) :: sb_structure
 integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
+real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:),cbb
 type(ctable_structure_type),intent(in) :: ctable_st
 integer(kind=gik), intent(in) :: seed
 real(kind=fk), intent(inout) :: sim(:)
 !locals
-real      var(10)
-real*8    p,cp,oldcp,w
+real(kind=fk)     var(10)
+real(kind=dk)    p,cp,oldcp,w
 logical   testind, trace
-integer nxyz,imult,ind,id,in
-integer ix,iy,iz,nnx,nny,nnz,nd,nxy
-real    xx,yy,zz,test,test2
+integer(kind=gik) nxyz,imult,ind,id,in
+integer(kind=gik) ix,iy,iz,nnx,nny,nnz,nd,nxy
+real(kind=fk)    xx,yy,zz,test,test2
 real(kind=fk) order(nx*ny*nz)
 real(kind=dk),allocatable :: A(:,:),b(:),s(:)
 real(kind=fk) :: radsqd
 real(kind=dk) :: xp
-real    gmean,cmean,cstdev
-integer id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
+real(kind=fk)    gmean,cmean,cstdev
+integer(kind=gik) id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
 integer(kind=gik) nclose,infoct(8),lktype
-real(kind=fk) close(ndmax+nodmax)
+real(kind=fk) close(size(vr))
 integer(kind=gik) ncnode,icnode(nodmax) !results of searching simulated nodes
 real(kind=fk) :: cnodex(nodmax),cnodey(nodmax),cnodez(nodmax),cnodev(nodmax)
-integer :: ne,isim,seed_size
-real*8 :: av,ss,simval
+integer(kind=gik) :: ne,isim,seed_size
+real(kind=fk) :: av,ss,simval
 
 radsqd = radius  * radius
 idbg = 0
@@ -316,6 +312,7 @@ call random_seed(put=(/ seed /))
 !
             if(sstrat.eq.0.and.test.le.TINY) sim(ind)=10.0*UNEST
       end do
+      
 102        format(' WARNING data values ',2i5,' are both assigned to ', &
             /,'         the same node - taking the closest')
 !
@@ -344,6 +341,17 @@ call random_seed(put=(/ seed /))
     xx = xmn + real(ix-1)*xsiz
     yy = ymn + real(iy-1)*ysiz
     zz = zmn + real(iz-1)*zsiz
+    
+    
+    print *,"xx,yy,zz=",xx,yy,zz
+#ifdef TRACE                  
+    print *,"sstrat=",sstrat
+    print *,"radsqd=",radsqd
+    print *,"ndmax=",ndmax
+    print *,"noct=",noct
+    print *,"nclose=",nclose
+#endif
+
 !
 ! Now, we'll simulate the point ix,iy,iz.  First, get the close data
 ! and make sure that there are enough to actually simulate a value,
@@ -353,10 +361,19 @@ call random_seed(put=(/ seed /))
     if(sstrat.eq.0) then
       call search_super_block( &
           xx,yy,zz,radsqd,srotmat, &
-          sb_strcture, &
+          sb_structure, &
           ndmax,noct, &
           x,y,z, &
           nclose,close,infoct)
+
+
+#ifdef TRACE                  
+      print *,"ndmax=",ndmax
+      print *,"noct=",noct
+      print *,"nclose=",nclose
+      print *,"close=",close(1:nclose)
+      print *,"infoct=",infoct
+#endif
 
       if(nclose.lt.ndmin) go to 5
       if(nclose.gt.ndmax) nclose = ndmax
@@ -367,6 +384,17 @@ call random_seed(put=(/ seed /))
         noct,nodmax, &
         ctable_st, &
         ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
+
+#ifdef TRACE                  
+    print *,"ncnode=",ncnode
+    print *,"icnode=",icnode(1:ncnode)
+    print *,"cnodex=",cnodex(1:ncnode)
+    print *,"cnodey=",cnodey(1:ncnode)
+    print *,"cnodez=",cnodez(1:ncnode)
+    print *,"cnodev=",cnodev(1:ncnode)
+#endif
+        
+    print *,"nclose,ncnode=",nclose,ncnode
 !
 ! Calculate the conditional mean and standard deviation.  This will be
 ! done with kriging if there are data, otherwise, the global mean and
@@ -388,8 +416,9 @@ call random_seed(put=(/ seed /))
 !
       lktype = ktype
       if(ktype.eq.1.and.(nclose+ncnode).lt.4)lktype=0
-      call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,nclose,close,ncnode, &
-                 nst,c0,cc,aa,it,vrotmat,ctable_st,cmean,cstdev)
+      call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,&
+                 nclose,close,ncnode,icnode,cnodex,cnodey,cnodez,cnodev, &
+                 nst,c0,cc,aa,it,vrotmat,cbb,ctable_st,cmean,cstdev)
     endif
 !
 ! Draw a random number and assign a value to this node:
@@ -462,12 +491,14 @@ subroutine krige( x,y,z, vra, &
       ix,iy,iz,xx,yy,zz, &
       ktype, &
       gmean, &
-      nclose,close,ncnode, & !conditioning data
-      nst,c0,cc,aa,it,vrotmat, & !variogram
+      nclose,close,& !conditioning data
+      ncnode,icnode,cnodex,cnodey,cnodez,cnodev, & !results of searching simulated nodes
+      nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
       ctable_st, &
       cmean, &
       cstdev)
 use variography, only: cova3
+use geometry, only: sqdist
 use solvers, only: system_solver
 implicit none
 !arguments
@@ -476,19 +507,21 @@ integer(kind=gik), intent(in) :: ix,iy,iz
 real(kind=fk), intent(in) :: xx,yy,zz
 real(kind=fk), intent(out) :: gmean
 integer(kind=gik), intent(in) :: ktype
-integer(kind=gik), intent(in) :: nclose,ncnode
+integer(kind=gik), intent(in) :: nclose
 real(kind=fk), intent(in) :: close(:)
+integer(kind=gik) ncnode,icnode(:) !results of searching simulated nodes
+real(kind=fk) :: cnodex(:),cnodey(:),cnodez(:),cnodev(:)
 type(ctable_structure_type),intent(in) :: ctable_st
 integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
+real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:),cbb
 real(kind=fk), intent(out) :: cmean,cstdev
 !locals
 logical first
 integer na,neq,i,j,k,ierr,idbg,ie,is,ising,ldbg,indexi,indexj
-real(kind=fk), allocatable :: a(:,:),b(:),s(:),r(:),rr(:),ipiv(:)
+real(kind=fk), allocatable :: a(:,:),r(:),rr(:),ipiv(:)
 integer(kind=gik) :: lktype,ind
 integer :: info
-real(kind=fk) :: cbb,cmax,cov,sumwts
+real(kind=fk) :: cmax,cov,sumwts,x1,y1,z1,x2,y2,z2
 !
 ! Size of the kriging system:
 !
@@ -509,73 +542,80 @@ if(lktype.ge.3) then
       ! end if
 end if
 
-allocate(a(neq,neq),b(neq),s(neq),r(neq),rr(neq),ipiv(neq))
+allocate(a(neq,neq),r(neq),rr(neq),ipiv(neq))
 !
 ! Set up kriging matrices:
 !
 !samples part
 do j=1,nclose
   indexj  = int(close(j))
+  x2 = x(indexj)
+  y2 = y(indexj)
+  z2 = z(indexj)
   do i=j,nclose
     indexi  = int(close(i))
-    call cova3(x(indexi),y(indexi),z(indexi),&
-               x(indexj),y(indexj),z(indexj),&
-               nst,c0,it,cc,aa,vrotmat,cmax,cov)
+    x1 = x(indexi)
+    y1 = y(indexi)
+    z1 = z(indexi)
+    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
 
   end do
 
-  call cova3(xx,yy,zz,x(indexi),y(indexi),z(indexi),&
-             nst,c0,it,cc,aa,vrotmat,cmax,cov)
-  b(j) = dble(cov)
+  call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+  r(j) = dble(cov)
 
 end do
 
 !simulated part
 do j=nclose+1,na
-  indexj  = int(close(j))
-  do i=1,nclose+1,na
-    indexj  = int(close(i))
-    call cova3(x(indexi),y(indexi),z(indexi),&
-               x(indexj),y(indexj),z(indexj),&
-               nst,c0,it,cc,aa,vrotmat,cmax,cov)
+  indexj  = j-nclose
+  x2 = cnodex(indexj)
+  y2 = cnodey(indexj)
+  z2 = cnodez(indexj)
+  do i=nclose+1,na
+    indexi  = i-nclose
+    x1 = cnodex(indexi)
+    y1 = cnodey(indexi)
+    z1 = cnodez(indexi)
+    
+    !print *,x1,y1,z1,x2,y2,z2
+    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
 
   end do
-  call cova3(xx,yy,zz,xx,yy,zz,&
-             nst,c0,it,cc,aa,vrotmat,cmax,cov)
-  b(j) = dble(cov)
+  call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+  
+  !print *,'sim par',j,xx,yy,zz,x2,y2,z2,cov,sqdist(xx,yy,zz,x2,y2,z2,vrotmat(1,:,:))
+  r(j) = dble(cov)
 end do
 
 !samples against simulated part
-do j=1,nclose
-  indexj  = int(close(j))
-  do i=1,nclose+1,na
+do j=nclose+1,na
+  indexj  = j-nclose
+  do i=1,nclose
     indexi  = int(close(i))
     call cova3(x(indexi),y(indexi),z(indexi),&
-               x(indexj),y(indexj),z(indexj),&
+               cnodex(indexj),cnodex(indexj),cnodex(indexj),&
                nst,c0,it,cc,aa,vrotmat,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
   end do
-  call cova3(xx,yy,zz,xx,yy,zz,&
-             nst,c0,it,cc,aa,vrotmat,cmax,cov)
-  b(j) = dble(cov)
 end do
+
 
 !
 ! Addition of OK constraint:
 !
 if(lktype.eq.1.or.lktype.eq.3) then
       do i=1,na
-        a(i,na) = 1.0
-        a(na,i) = 1.0
+        a(i,na+1) = 1.0
+        a(na+1,i) = 1.0
       end do
-      a(na,na)    = 0.0
+      a(na+1,na+1)    = 0.0
       r(na+1)  = 1.0
-      rr(na+1) = 1.0
 endif
 !
 ! Addition of the External Drift Constraint:
@@ -617,33 +657,31 @@ if(lktype.eq.4) then
       ! rr(ii)= r(ii)
 !           if((sfmax-sfmin).lt.EPSLON) neq = neq - 1
 end if
-!
-! Write out the kriging Matrix if Seriously Debugging:
-!
-if(idbg.ge.3) then
-      write(ldbg,100) ix,iy,iz
-      is = 1
-      do i=1,neq
-            ie = is + i - 1
-            !!!write(ldbg,101) i,r(i),(a(j),j=is,ie)
-            is = is + i
-      end do
-100        format(/,'Kriging Matrices for Node: ',3i4,' RHS first')
+
+
+!debug krigin system
+do i=1,neq
+  write(*,101) i,r(i),(a(i,j),j=1,neq)
+end do
+
+
 101        format('    r(',i2,') =',f7.4,'  a= ',99f7.4)
-endif
 !
 ! Solve the Kriging System:
 !
+rr = r
+
 if(neq.eq.1.and.lktype.ne.3) then
-      s(1)  = r(1) / a(1,1)
+      r(1)  = r(1) / a(1,1)
       ising = 0
 else
   call system_solver(a,r,.true.,info)
 endif
+
 !
 ! Write a warning if the matrix is singular:
 !
-if(ising.ne.0) then
+if(info.ne.0) then
       if(idbg.ge.1) then
             write(ldbg,*) 'WARNING SGSIM: singular matrix'
             write(ldbg,*) '               for node',ix,iy,iz
@@ -664,12 +702,13 @@ cmean  = 0.0
 cstdev = cbb
 sumwts = 0.0
 do i=1,na
-      cmean  = cmean  + real(s(i))*vra(i)
-      cstdev = cstdev - real(s(i)*rr(i))
-      sumwts = sumwts + real(s(i))
+      write(ldbg,*) 'EST/VAR: ',i,r(i),vra(i),rr(i)
+      cmean  = cmean  + real(r(i))*vra(i)
+      cstdev = cstdev - real(r(i)*rr(i))
+      sumwts = sumwts + real(r(i))
 end do
 
-if(lktype.eq.1) cstdev = cstdev - real(s(na+1))
+if(lktype.eq.1) cstdev = cstdev - real(r(na+1))
 
 if(lktype.eq.2) cmean  = cmean + gmean
 
@@ -682,7 +721,7 @@ end if
 ! Error message if negative variance:
 !
 if(cstdev.lt.0.0) then
-      write(ldbg,*) 'ERROR: Negative Variance: ',cstdev
+      write(ldbg,*) 'ERROR: Negative Variance: ',cstdev,cbb
       cstdev = 0.0
 endif
 cstdev = sqrt(max(cstdev,0.0))
@@ -691,7 +730,7 @@ cstdev = sqrt(max(cstdev,0.0))
 !
 if(idbg.ge.3) then
       do i=1,na
-            write(ldbg,140) i,vra(i),s(i)
+            write(ldbg,140) i,vra(i),r(i)
       end do
 140        format(' Data ',i4,' value ',f8.4,' weight ',f8.4)
 !      if(lktype.eq.4) write(ldbg,141) lvm(ind),s(na+1)
@@ -760,7 +799,7 @@ subroutine ctable( &
     nst,c0,cc,aa,it,vrotmat, &
     radsqd,nodmax,&
     MAXCTX,MAXCTY,MAXCTZ,&
-    covtab,nlooku,ixnode,iynode,iznode)
+    covtab,nlooku,ixnode,iynode,iznode,cbb)
 use variography, only: cova3
 use sorting, only: sortem_original
 use geometry, only: sqdist
@@ -777,11 +816,11 @@ integer(kind=gik), intent(out) ::nlooku
 integer(kind=gik), intent(inout) ::ixnode(:),iynode(:),iznode(:)
 integer(kind=gik), intent(in) ::nodmax
 integer(kind=gik), intent(in) ::MAXCTX,MAXCTY,MAXCTZ
-
+real(kind=fk),intent(out) :: cbb
 !locals
 real,parameter :: TINY=1.0e-10
 real(kind=fk)::tmp(MAXCTX * MAXCTY * MAXCTZ),order(MAXCTX * MAXCTY * MAXCTZ)
-real(kind=fk)::cmax,cbb
+real(kind=fk)::cmax
 integer nctx,ncty,nctz,i,j,k,MAXCXY,ic,jc,kc,il,ix,iy,iz,loc
 real xx,yy,zz
 
@@ -878,7 +917,7 @@ integer(kind=gik), intent(in) ::nlooku
 integer(kind=gik), intent(inout) ::ncnode,icnode(:)
 real(kind=fk), intent(inout) ::cnodex(:),cnodey(:),cnodez(:),cnodev(:)
 !locals
-integer   ninoct(8),i,j,k,il,ind,idx,idy,idz,iq,nxy
+integer(kind=gik) :: ninoct(8),i,j,k,il,ind,idx,idy,idz,iq,nxy
 
 nxy = nx*ny
 !
@@ -890,14 +929,33 @@ if(noct.gt.0) then
             ninoct(i) = 0
       end do
 end if
+
+#ifdef TRACE                  
+print *, "srchnd::nlooku",nlooku
+print *, "srchnd::(ix,iy,iz)",ix,iy,iz
+print *, "srchnd::(nctx,ncty,nctz)",nctx,ncty,nctz
+#endif
+
 do 2 il=2,nlooku
       if(ncnode.eq.nodmax) return
       i = ix + (int(ixnode(il))-nctx-1)
       j = iy + (int(iynode(il))-ncty-1)
       k = iz + (int(iznode(il))-nctz-1)
+
+#ifdef TRACE                  
+      print *, "srchnd::do2.(il,ijk)",il,i,j,k
+#endif
+
+
       if(i.lt. 1.or.j.lt. 1.or.k.lt. 1) go to 2
       if(i.gt.nx.or.j.gt.ny.or.k.gt.nz) go to 2
       ind = i + (j-1)*nx + (k-1)*nxy
+
+#ifdef TRACE                  
+      print *, "srchnd::do2.ind",ind,sim(ind)
+      print *, "srchnd::ncnode",ncnode
+#endif
+
       if(sim(ind).gt.UNEST) then
 !
 ! Check the number of data already taken from this octant:
