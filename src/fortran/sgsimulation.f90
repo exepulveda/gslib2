@@ -126,24 +126,30 @@ real(kind=fk), intent(inout) :: sim(:)
 type(sb_structure_type) :: sb_structure
 real(kind=fk) vrotmat(nst,3,3),srotmat(3,3)
 type(ctable_structure_type) :: ctable_st
-type(grid_type) :: grid,sb_grid
+type(grid_type) :: sb_grid
 integer(kind=gik) :: nmult = 0
 integer(kind=gik) :: sstrat = 0
-integer(kind=gik) :: nr,seed_size,max_int,rseed
+integer(kind=gik) :: nr,seed_size,max_int,rseed,i,j
 real(kind=fk) :: realisation_seed(nsim),cbb
+
+ !trivial checkings
+ !1.- samples duplicated
+ do i=1,size(x)
+   do j=1,size(x)
+     if (i/=j .and. x(i) == x(j) .and. y(i)==y(j) .and. z(i) == z(j)) then
+      stop "DATA DUPLICATED"
+      end if
+   end do
+  end do
 
   max_int = huge(seed)
   !with the given seed, generate seeds for each realisation
   call random_number(realisation_seed)
 
 
-  grid.nodes = (/ nx,ny,nz /)
-  grid.sizes = (/ xsiz,ysiz,zsiz /)
-  grid.starts = (/ xmn,ymn,zmn /)
-
   call setrot(sang1,sang2,sang3,sanis1,sanis2,srotmat)
 
-  sb_structure = setup_superblock(x,y,z,vr,sec,grid,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
+  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
 
   do nr=1,nst
     call setrot(ang1(nr),ang2(nr),ang3(nr),anis1(nr),anis2(nr),vrotmat(nr,:,:))
@@ -162,7 +168,7 @@ real(kind=fk) :: realisation_seed(nsim),cbb
   do nr=1,nsim
     rseed = int(realisation_seed(nr)*max_int)
     print *,'realisation=',nr,'seed=',rseed
-    call sgsim_realizarion_grid( &
+    call sgsim_realizarion_grid(nr, &
       x,y,z, & ! coordinates
       vr, &    ! variable
       nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
@@ -177,7 +183,7 @@ real(kind=fk) :: realisation_seed(nsim),cbb
   end do
 end subroutine
 
-subroutine sgsim_realizarion_grid( &
+subroutine sgsim_realizarion_grid( isim, &
     x,y,z, & ! coordinates
     vr, &    ! variable
     nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
@@ -192,8 +198,10 @@ subroutine sgsim_realizarion_grid( &
 use geometry
 use searching, only: sb_structure_type,setup_superblock,search_super_block
 use sorting, only: sortem_original
+use gaussian_utils, only: gauinv
 implicit none
 !arguments
+integer(kind=gik), intent(in) :: isim
 real(kind=fk), intent(in) :: x(:),y(:),z(:)
 real(kind=fk), intent(in) :: vr(:)
 integer(kind=gik), intent(in) :: nx,ny,nz
@@ -222,21 +230,22 @@ real(kind=dk) :: xp
 real(kind=fk)    cmean,cstdev,gmean
 integer(kind=gik) id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
 integer(kind=gik) nclose,infoct(8),lktype
-real(kind=fk) close(size(vr))
+real(kind=fk) close(size(x))
 integer(kind=gik) ncnode,icnode(nodmax) !results of searching simulated nodes
 real(kind=fk) :: cnodex(nodmax),cnodey(nodmax),cnodez(nodmax),cnodev(nodmax)
-integer(kind=gik) :: ne,isim,seed_size
+integer(kind=gik) :: ne,seed_size,i,j
 real(kind=fk) :: av,ss,simval
 
 radsqd = radius  * radius
 idbg = 0
+ldbg = 0
 gmean = 0
 
 nd = size(vr)
 nxy = nx*ny
 nxyz = nxy*nz
 
-print *,"seed for realization:",seed
+print *,"seed for realization:",seed,size(sim)
 !set seed
 seed_size=1
 call random_seed(size=seed_size)
@@ -245,10 +254,9 @@ call random_seed(put=(/ seed /))
 !
 ! Work out a random path for this realization:
 !
+      call random_number(sim)
       do ind=1,nxyz
-            !sim(ind)   = real(acorni(idum))
-            call random_number(sim(ind))
-            order(ind) = ind
+        order(ind) = ind
       end do
 !
 ! The multiple grid search works with multiples of 4 (yes, that is
@@ -276,6 +284,7 @@ call random_seed(put=(/ seed /))
             end do
       end if
       call sortem_original(1,nxyz,sim,order)
+      print *,'FIRST PATH=',order(1)
 
 #ifdef TRACE                  
       do ind=1,nxyz
@@ -351,7 +360,7 @@ call random_seed(put=(/ seed /))
     
     
 #ifdef TRACE                  
-    print *,"xx,yy,zz=",xx,yy,zz
+    print *,in,index,"xx,yy,zz=",xx,yy,zz
     print *,"sstrat=",sstrat
     print *,"radsqd=",radsqd
     print *,"ndmax=",ndmax
@@ -372,6 +381,15 @@ call random_seed(put=(/ seed /))
           ndmax,noct, &
           x,y,z, &
           nclose,close,infoct)
+          
+      !check close are not duplicated
+      do i=1,nclose
+       do j=1,nclose
+         if (i/=j .and. close(i) == close(j)) then
+          stop "search_super_block DUPLICATED"
+          end if
+       end do
+      end do
 
 
 #ifdef TRACE                  
@@ -386,11 +404,11 @@ call random_seed(put=(/ seed /))
       if(nclose.gt.ndmax) nclose = ndmax
     endif
 
-!    call search_ctable(ix,iy,iz,sim, &
-!        nx,ny,nz, xmn,ymn,zmn, xsiz,ysiz,zsiz, &
-!        noct,nodmax, &
-!        ctable_st, &
-!        ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
+    call search_ctable(ix,iy,iz,sim, &
+        nx,ny,nz, xmn,ymn,zmn, xsiz,ysiz,zsiz, &
+        noct,nodmax, &
+        ctable_st, &
+        ncnode,icnode,cnodex,cnodey,cnodez,cnodev)
 
 #ifdef TRACE                  
     print *,"ncnode=",ncnode
@@ -425,7 +443,7 @@ call random_seed(put=(/ seed /))
       if(ktype.eq.1.and.(nclose+ncnode).lt.4)lktype=0
       
       !hack
-      ncnode = 0
+      !ncnode = 0
       call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,&
                  nclose,close, &
                  ncnode,icnode,cnodex,cnodey,cnodez,cnodev, &
@@ -532,13 +550,15 @@ real(kind=fk), intent(out) :: cmean,cstdev
 !locals
 logical first
 integer na,neq,i,j,k,ierr,idbg,ie,is,ising,ldbg,indexi,indexj
-real(kind=fk), allocatable :: a(:,:),b(:),s(:),rr(:)
+real(kind=fk), allocatable :: a(:,:),b(:),s(:)
 integer(kind=gik) :: lktype,ind
-integer :: info
+integer :: info,ss_option
 real(kind=fk) :: cmax,cov,sumwts,x1,y1,z1,x2,y2,z2
 !
 ! Size of the kriging system:
 !
+idbg = 0
+
 lktype = ktype
 first = .false.
 na    = nclose + ncnode
@@ -556,7 +576,7 @@ if(lktype.ge.3) then
       ! end if
 end if
 
-allocate(a(neq,neq),b(neq),rr(neq),s(neq))
+allocate(a(neq,neq),b(neq),s(neq))
 
 a = 0
 b = 0
@@ -575,7 +595,7 @@ do j=1,nclose
     y1 = y(indexi)
     z1 = z(indexi)
     if (indexi /=indexj .and. (x1 == x2 .and. y1 == y2 .and. z1 == z2)) then
-    print *, indexi,indexj,x1,y1,z1,x2,y2,z2
+    print *, indexi,indexj,x1,y1,z1,x2,y2,z2,close(i),close(j)
     stop "SAMPLES REPETEAD"
     end if
     call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
@@ -591,7 +611,6 @@ end do
 
 !simulated part
 do j=nclose+1,na
-  stop "WHAT"
   indexj  = j-nclose
   x2 = cnodex(indexj)
   y2 = cnodey(indexj)
@@ -618,7 +637,6 @@ end do
 
 !samples against simulated part
 do j=nclose+1,na
-  stop "WHAT"
   indexj  = j-nclose
   x2 = cnodex(indexj)
   y2 = cnodey(indexj)
@@ -699,13 +717,16 @@ end do
 !
 ! Solve the Kriging System:
 !
-rr = b
-
 if(neq.eq.1.and.lktype.ne.3) then
       b(1)  = b(1) / a(1,1)
       ising = 0
 else
-  call system_solver(a,b,s,.true.,info)
+  if (lktype == 0) then
+    ss_option = 1
+  else
+    ss_option = 1
+  end if
+  call system_solver(a,b,s,ss_option,info)
   if (info /= 0) then
     print *,"info=",info
     stop "BAD SYSTEM"
@@ -713,10 +734,13 @@ else
   !r must sum up 1
   sumwts = 0.0
   do i=1,na
-    sumwts = sumwts + real(s(i))
+    sumwts = sumwts + s(i)
   end do
   
-  if (sumwts > 1.0) stop "Weights must sum up 1.0"
+  if (sumwts > 1.1 ) then
+    print *, 'sumwts',sumwts
+    stop "Weights must sum up 1.0"
+  end if
 endif
 
 !
@@ -739,19 +763,23 @@ endif
 !     3 = External Drift:
 !     4 = Collocated Cosimulation:
 !
+#ifdef TRACE                  
+write(ldbg,*) 'cbb: ',cbb
+#endif
+
 cmean  = 0.0
 cstdev = cbb
 sumwts = 0.0
 do i=1,na
-      write(ldbg,*) 'EST/VAR: ',i,s(i),vra(i),rr(i)
 #ifdef TRACE                  
+      write(ldbg,*) 'EST/VAR: ',i,s(i),vra(i),b(i)
 #endif
       cmean  = cmean  + real(s(i))*vra(i)
-      cstdev = cstdev - real(s(i)*rr(i))
+      cstdev = cstdev - real(s(i)*b(i))
       sumwts = sumwts + real(s(i))
 end do
 
-if(lktype.eq.1) cstdev = cstdev - real(b(na+1))
+if(lktype.eq.1) cstdev = cstdev - real(s(na+1))
 
 if(lktype.eq.2) cmean  = cmean + gmean
 
@@ -784,58 +812,9 @@ end if
 !
 ! Finished Here:
 !
-deallocate(a,s,b,rr)
+deallocate(a,s,b)
 
 end subroutine
-
-subroutine gauinv(p,xp,ierr)
-real(kind=dk),intent(in) :: p
-real(kind=dk),intent(out) :: xp
-integer(kind=gik),intent(out) ::  ierr
-!locals
-real*8 p0,p1,p2,p3,p4,q0,q1,q2,q3,q4,y,pp,lim
-save   p0,p1,p2,p3,p4,q0,q1,q2,q3,q4,lim
-!
-! Coefficients of approximation:
-!
-data lim/1.0e-10/
-data p0/-0.322232431088/,p1/-1.0/,p2/-0.342242088547/, &
-     p3/-0.0204231210245/,p4/-0.0000453642210148/
-data q0/0.0993484626060/,q1/0.588581570495/,q2/0.531103462366/, &
-     q3/0.103537752850/,q4/0.0038560700634/
-!
-! Check for an error situation:
-!
-ierr = 1
-if(p.lt.lim) then
-      xp = -1.0e10
-      return
-end if
-if(p.gt.(1.0-lim)) then
-      xp =  1.0e10
-      return
-end if
-ierr = 0
-!
-! Get k for an error situation:
-!
-pp   = p
-if(p.gt.0.5) pp = 1 - pp
-xp   = 0.0
-if(p.eq.0.5) return
-!
-! Approximate the function:
-!
-y  = dsqrt(dlog(1.0/(pp*pp)))
-xp = real( y + ((((y*p4+p3)*y+p2)*y+p1)*y+p0) / &
-               ((((y*q4+q3)*y+q2)*y+q1)*y+q0) )
-if(real(p).eq.real(pp)) xp = -xp
-!
-! Return with G^-1(p):
-!
-return
-end subroutine
-
 
 subroutine ctable( &
     nx,ny,nz, &

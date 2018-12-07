@@ -221,7 +221,6 @@ end do
 !
 ! Finished:
 !
-if (cova <0) stop "COVA < 0"
 return
 end subroutine
 

@@ -1,5 +1,6 @@
 module searching
 use kinds_kit
+use iso_c_binding
 implicit none
 
 type sb_structure_type
@@ -16,15 +17,99 @@ end type
 
 contains
 
-!high level functions
-function setup_superblock(x,y,z,vr,sec,grid,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+!C_API
+subroutine array_example(x,n) bind(c, name='array_example')
+  implicit none
+  real(kind=fk), intent(inout) :: x(n)
+  integer(kind=gik), intent(in), value :: n
+  print *,"x",size(x)
+  print *,"n",n
+  
+  x(1) = 999
+
+end subroutine
+
+
+!C_API
+subroutine super_block_print(sb_p) bind(c, name='super_block_print')
+  implicit none
+  type(c_ptr), intent(in), value :: sb_p
+  !
+  type(sb_structure_type),pointer :: sb_structure
+  call c_f_pointer(sb_p, sb_structure)  
+  
+  print *, sb_structure%nxsup,sb_structure%nysup,sb_structure%nzsup
+
+end subroutine
+
+
+function setup_superblock_c(x,y,z,vr,sec,n,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ) bind(c, name='setup_superblock')
+  implicit none
+  real(kind=fk), intent(inout) :: x(n),y(n),z(n)
+  real(kind=fk), intent(inout) :: vr(n)
+  real(kind=fk), intent(inout),optional :: sec(n)
+  integer(kind=gik), intent(in),value :: n
+  integer(kind=gik), intent(in),value :: nx,ny,nz
+  real(kind=fk), intent(in),value    :: xsiz,ysiz,zsiz
+  real(kind=fk), intent(in),value    :: xmn,ymn,zmn
+  real(kind=fk), intent(in) :: rotmat(3,3)
+  real(kind=fk), intent(in),value :: radsqd
+  integer(kind=gik), intent(in), value :: MAXSBX,MAXSBy,MAXSBZ
+!return
+  type(c_ptr) :: setup_superblock_c
+!locals
+  type(sb_structure_type) :: sb_structure
+
+  print *,"grid",nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz
+  print *,"x",size(x)
+  print *,"y",size(y)
+  print *,"z",size(z)
+
+  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+  
+  setup_superblock_c = c_loc(sb_structure)
+end function
+
+integer(kind=gik) function search_super_block_c(sb_p, &
+        xloc,yloc,zloc,radsqd,rotmat,ndmax,noct,x,y,z,nd,nclose,close,infoct) bind(c, name='search_super_block')
+implicit none
+!arguments
+  type(c_ptr), intent(in), value :: sb_p
+  real(kind=fk), intent(in), value :: xloc,yloc,zloc
+  real(kind=fk), intent(in) :: rotmat(3,3)
+  real(kind=fk), intent(in), value :: radsqd
+  integer(kind=gik), intent(in), value :: ndmax,noct
+  real(kind=fk), intent(in) :: x(nd),y(nd),z(nd)
+  integer(kind=gik), intent(in),value :: nd
+  real(kind=fk), intent(inout) :: close(nclose)
+  integer(kind=gik), intent(in) :: nclose
+  integer(kind=gik), intent(inout) :: infoct(8)
+!locals
+  type(sb_structure_type),pointer :: sb_structure
+  real(kind=fk) :: buffer(nd)
+  integer(kind=gik) n_found
+!begin
+  call c_f_pointer(sb_p, sb_structure)  
+  
+  call search_super_block(xloc,yloc,zloc,radsqd,rotmat,sb_structure,ndmax,noct,x,y,z,n_found,buffer,infoct)
+  close(1:n_found) = buffer(1:n_found)
+  
+  search_super_block_c = n_found
+  
+end function
+
+!=======================================================================
+!Fortran side
+function setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
 use geometry, only: grid_type
 implicit none
 !arguments
   real(kind=fk), intent(inout) :: x(:),y(:),z(:)
   real(kind=fk), intent(inout) :: vr(:)
   real(kind=fk), intent(inout),optional :: sec(:)
-  type(grid_type), intent(in)  ::grid
+  integer(kind=gik) :: nx,ny,nz
+  real(kind=fk)    :: xsiz,ysiz,zsiz
+  real(kind=fk)    :: xmn,ymn,zmn
   real(kind=fk), intent(in) :: rotmat(:,:),radsqd
   integer(kind=gik), intent(in) :: MAXSBX,MAXSBy,MAXSBZ
 
@@ -35,7 +120,7 @@ implicit none
   integer(kind=gik) MAXSB
   integer(kind=gik) test
 
-  MAXSB = min(grid%nodes(1),MAXSBX)*min(grid%nodes(2),MAXSBY)*min(grid%nodes(3),MAXSBZ)
+  MAXSB = min(nx,MAXSBX)*min(ny,MAXSBY)*min(nz,MAXSBZ)
   !determine
   allocate(sb_structure%nisb(MAXSB),stat = test)
   
@@ -46,9 +131,9 @@ implicit none
   print *,'setup_superblock::','before setsupr'
 #endif
   call setsupr( &
-      grid%nodes(1),grid%starts(1),grid%sizes(1), &
-      grid%nodes(2),grid%starts(2),grid%sizes(2), &
-      grid%nodes(3),grid%starts(3),grid%sizes(3), &
+      nx,xmn,xsiz, &
+      ny,ymn,ysiz, &
+      nz,zmn,zsiz, &
       x,y,z, &
       vr,sec,MAXSBX,MAXSBY,MAXSBZ, &
       sb_structure%nisb, &
@@ -362,12 +447,20 @@ nd = size(x)
             ii = ix + (iy-1)*nxsup + (iz-1)*nxsup*nysup
             tmp(i)   = ii
             nisb(ii) = nisb(ii) + 1
+            sec(i) = i
       end do
 !
 ! Sort the data by ascending super block number:
 !
       nsort = 4 + nsec
       call sortem_original(1,nd,tmp,x,y,z,vr,sec)
+
+#ifdef TRACE_SORTED
+      print *,"SORTED XYZ"
+      do i=1,nd
+        print *,x(i),y(i),z(i),vr(i),sec(i)
+      end do
+#endif
 !
 ! Set up array nisb with the starting address of the block data:
 !
@@ -486,13 +579,14 @@ logical inflag
 !
 ! Is this super block within the grid system:
 !
+            if (isup > size(ixsbtosr)) stop "isup > size(ixsbtosr)"
+            if (isup > size(iysbtosr)) stop "isup > size(ixsbtosr)"
+            if (isup > size(izsbtosr)) stop "isup > size(ixsbtosr)"
+
             ixsup = ix + ixsbtosr(isup)
             iysup = iy + iysbtosr(isup)
             izsup = iz + izsbtosr(isup)
 
-            if (isup > size(ixsbtosr)) stop "isup > size(ixsbtosr)"
-            if (isup > size(iysbtosr)) stop "isup > size(ixsbtosr)"
-            if (isup > size(izsbtosr)) stop "isup > size(ixsbtosr)"
 
 #ifdef TRACE                  
             print *,"srchsupr::isup",isup

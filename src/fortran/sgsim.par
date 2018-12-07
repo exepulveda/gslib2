@@ -16,13 +16,13 @@ histsmth.out                  -  file with ref. dist distribution
 3                             -debugging level: 0,1,2,3
 sgsim.dbg                     -file for debugging output
 sgsim.out                     -file for simulation output
-1                             -number of realizations to generate
+2                             -number of realizations to generate
 10    20.0    40.0              -nx,xmn,xsiz
 10    30.0    60.0              -ny,ymn,ysiz
 10    50.0    20.0              -nz,zmn,zsiz
 69069                         -random number seed
 0     10                       -min and max original data for sim
-0                            -number of simulated nodes to use
+10                            -number of simulated nodes to use
 0                             -assign data to nodes (0=no, 1=yes)
 0     3                       -multiple grid search (0=no, 1=yes),num
 0                             -maximum data per octant (0=not used)
