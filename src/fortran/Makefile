@@ -9,16 +9,20 @@ MKL_INCS=-I${MKLROOT}/include/intel64/lp64 -I${MKLROOT}/include
 
 #/opt/intel/compilers_and_libraries_2018/mac/mkl/interfaces/include/intel64/lp64/ /opt/intel/mkl/lib/intel64_lin/
 TRACE_OPTIONS = -DNO_TRACE 
+OPTIMIZATION_FLAGS = -O4
 
-FC_OPTIONS =  -fPIC $(TRACE_OPTIONS) -fpp  -g
-LINKER_OPTIONS =  -g 
+FC_OPTIONS =  -fPIC $(TRACE_OPTIONS) -fpp  -g $(OPTIMIZATION_FLAGS) -qopenmp # -init=snan,arrays -traceback
+LINKER_OPTIONS =  -g -qopenmp
 
 %.o: %.f90
 	$(FC) $(FC_OPTIONS) -c $<
 
+%.o: %.for
+	$(FC) $(FC_OPTIONS) -c $<
+
 all: gslib2 sgsim
 
-OBJS= kinds_kit.o geometry.o interpolation.o sorting.o searching.o gaussian_utils.o variography.o solvers.o sgsimulation.o
+OBJS= kinds_kit.o geometry.o interpolation.o sorting.o searching.o gaussian_utils.o variography.o solvers.o kriging.o sgsimulation.o 
 
 gslib2: $(OBJS)
 	$(FC) -g -shared -fPIC -o gslib2.so $(OBJS)
@@ -26,8 +30,8 @@ gslib2: $(OBJS)
 sgsim: gslib2 sgsim.o
 	$(FC) $(OBJS) sgsim.o -o sgsim $(LINKER_OPTIONS)
 
-sgsim.o: sgsim.for
-	$(FC) -c sgsim.for
+kt3d: gslib2 kt3d.o
+	$(FC) $(OBJS) kt3d.o -o kt3d $(LINKER_OPTIONS) 
 
 clean:
 	rm -fr *.mod *.o

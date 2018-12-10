@@ -19,48 +19,79 @@ type vmodel_type
   type(vmodel_structure_type),allocatable,dimension(:) :: structure
 end type
 
-integer(4), parameter :: SPHERICAL = 1
-integer(4), parameter :: EXPONENTIAL = 2
-integer(4), parameter :: GAUSSIAN = 3
-integer(4), parameter :: POWER = 4
-integer(4), parameter :: HOLE_EFFECT = 5
+integer(4), parameter :: SPHERICAL_MODEL = 1
+integer(4), parameter :: EXPONENTIAL_MODEL = 2
+integer(4), parameter :: GAUSSIAN_MODEL = 3
+integer(4), parameter :: POWER_MODEL = 4
+integer(4), parameter :: HOLE_EFFECT_MODEL = 5
 
 public setup_vmodel_structure,cova3
 
 contains
 
-subroutine setup_vmodel_structure(vmodel,is,type,sill,r1,r2,r3,a1,a2,a3)
-use geometry, only: setrot
-!arguments
-type(vmodel_type), intent(inout) :: vmodel
-integer(kind=gik), intent(in) :: is
-integer(kind=gik), intent(in) :: type
-real(kind=fk), intent(in) :: sill
-real(kind=fk), intent(in) :: r1,r2,r3
-real(kind=fk), intent(in) :: a1,a2,a3
-!locals
-  vmodel%structure(is)%type = type
-  vmodel%structure(is)%sill = sill
-  vmodel%structure(is)%angle(1) = a1
-  vmodel%structure(is)%angle(2) = a2
-  vmodel%structure(is)%angle(3) = a3
+subroutine setup_vmodel(vmodel,nst,c0,it,cc,aa,ang1,ang2,ang3,anis1,anis2)
+  use geometry, only: setrot
+  implicit none
+  !arguments
+  type(vmodel_type), intent(inout) :: vmodel
+  integer(kind=gik), intent(in) :: nst
+  integer(kind=gik), intent(in) :: it(:)
+  real(kind=fk), intent(in) :: c0,cc(:),aa(:)
+  real(kind=fk), intent(in) :: ang1(:),ang2(:),ang3(:)
+  real(kind=fk), intent(in) :: anis1(:),anis2(:)
+  !locals 
+  integer is
 
-  vmodel%structure(is)%range(1) = r1
-  vmodel%structure(is)%range(2) = r2
-  vmodel%structure(is)%range(3) = r3
+  vmodel%nugget = c0
+  vmodel%nst = nst
 
-  call setrot(vmodel%structure(is)%angle(1), &
-              vmodel%structure(is)%angle(2), &
-              vmodel%structure(is)%angle(3), &
-              vmodel%structure(is)%range(1)/vmodel%structure(is)%range(2), &
-              vmodel%structure(is)%range(1)/vmodel%structure(is)%range(3), &
-              vmodel%structure(is)%rotmat)
+  allocate(vmodel%structure(nst))
+
+  do is=1,nst
+    vmodel%structure(is)%type = it(is)
+    vmodel%structure(is)%sill = cc(is)
+    vmodel%structure(is)%angle(1) = ang1(is)
+    vmodel%structure(is)%angle(2) = ang2(is)
+    vmodel%structure(is)%angle(3) = ang3(is)
+
+    vmodel%structure(is)%range(1) = aa(is)
+    !vmodel%structure(is)%range(2) = range2(is)
+    !vmodel%structure(is)%range(3) = range3(is)
+
+    call setrot(vmodel%structure(is)%angle(1), &
+                vmodel%structure(is)%angle(2), &
+                vmodel%structure(is)%angle(3), &
+                anis1(is), &
+                anis2(is), &
+                vmodel%structure(is)%rotmat)
+                
+  end do
 end subroutine
 
-pure function max_cova(p1,p2,vmodel) result(cmax)
+subroutine print_vmodel(vmodel)
+implicit none
+  !arguments
+  type(vmodel_type), intent(in) :: vmodel
+  !locals 
+  integer is
+
+  print *, "nugget=",vmodel%nugget
+  print *, "nst=",vmodel%nst
+
+  do is=1,vmodel%nst
+    print *, "st=",1,"type=",vmodel%structure(is)%type
+    print *, "st=",1,"sill=",vmodel%structure(is)%sill
+    print *, "st=",1,"range=",vmodel%structure(is)%range(1)
+    print *, "st=",1,"rotmat=",vmodel%structure(is)%rotmat
+  end do
+end subroutine
+
+
+pure function max_cova(vmodel) result(cmax)
+implicit none
 !dummies
-real(kind=fk), intent(in),dimension(:) :: p1,p2
 type(vmodel_type), intent(in) :: vmodel
+!return
 real(kind=fk) :: cmax
 !locals
 integer(4) i
@@ -79,16 +110,16 @@ real(kind=dk) hsqd,h,aa,cc
   end do
 end function
 
-pure function cova3_new(p1,p2,vmodel) result(cova)
+subroutine cova3_vmodel(x1,y1,z1,x2,y2,z2,vmodel,cmax,cova)
 use geometry, only : sqdist
+implicit none
 !dummies
-real(kind=fk), intent(in),dimension(:) :: p1,p2
+real(kind=fk), intent(in) :: x1,y1,z1,x2,y2,z2
 type(vmodel_type), intent(in) :: vmodel
-real(kind=fk) :: cova
+real(kind=fk),intent(out) :: cova,cmax
 !locals
-real(kind=fk) :: cmax
 integer(4) i
-real(kind=dk) hsqd,h,aa,cc
+real(kind=dk) hsqd,h,aa,cc,hr
 logical :: cmax_calculated
 
 !
@@ -99,9 +130,9 @@ logical :: cmax_calculated
 !
 ! Check for "zero" distance, return with cmax if so:
 !
-  hsqd = sqdist(p1(1),p1(2),p1(3),p2(1),p2(2),p2(3),vmodel%structure(1)%rotmat)
-  if (hsqd <= EPSILON) then
-    cova = max_cova(p1,p2,vmodel)
+  hsqd = sqdist(x1,y1,z1,x2,y2,z2,vmodel%structure(1)%rotmat)
+  if (hsqd <= EPSLON) then
+    cova = max_cova(vmodel)
     return
   endif
 !
@@ -113,7 +144,7 @@ logical :: cmax_calculated
 ! Compute the appropriate distance:
 !
     if (i /= 1) then
-      hsqd=sqdist(p1(1),p1(2),p1(3),p2(1),p2(2),p2(3),vmodel%structure(i)%rotmat)
+      hsqd=sqdist(x1,y1,z1,x2,y2,z2,vmodel%structure(i)%rotmat)
     end if
     h = sqrt(hsqd)
 
@@ -121,28 +152,29 @@ logical :: cmax_calculated
     cc = vmodel%structure(i)%sill
 
     select case(vmodel%structure(i)%type)
-    case (SPHERICAL)
+    case (SPHERICAL_MODEL)
       hr = h/aa
       if(hr.lt.1.) cova=cova+cc*(1.-hr*(1.5-.5*hr*hr))
-    case (EXPONENTIAL)
+    case (EXPONENTIAL_MODEL)
       cova = cova + cc*exp(-3.0*h/aa)
-    case (GAUSSIAN)
+    case (GAUSSIAN_MODEL)
       cova = cova + cc*exp(-3.*(h/aa)*(h/aa))
-    case (POWER)
+    case (POWER_MODEL)
       if (.not. cmax_calculated) then
-        cmax = max_cova(p1,p2,vmodel)
+        cmax = max_cova(vmodel)
         cmax_calculated = .true.
       endif
 
       cova = cova + cmax - cc*(h**aa)
-    case (HOLE_EFFECT)
+    case (HOLE_EFFECT_MODEL)
       cova = cova + cc*cos(h/aa*PI)
     end select
   end do
-end function
+end subroutine
 
 subroutine cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cova)
-use geometry, only : sqdist
+  use geometry, only : sqdist
+  implicit none
 !dummies
 real(kind=fk), intent(in) :: x1,y1,z1,x2,y2,z2
 real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
@@ -150,7 +182,7 @@ integer(kind=gik), intent(in) :: it(:),nst
 real(kind=fk), intent(out) :: cmax,cova
 !locals
 integer(4) i,is,ist
-real(kind=dk) hsqd,h
+real(kind=dk) hsqd,h,hr
 
 !
 ! Calculate the maximum covariance value (used for zero distances and
@@ -184,25 +216,24 @@ do is=1,nst
 ! Compute the appropriate distance:
 !
       if(ist.ne.1) then
-            ir = min((irot+is-1),MAXROT)
             hsqd=sqdist(x1,y1,z1,x2,y2,z2,vrotmat(ist,:,:))
       end if
       h = real(dsqrt(hsqd))
 !
 ! Spherical Variogram Model?
 !
-      if(it(ist).eq.SPHERICAL) then
+      if(it(ist).eq.SPHERICAL_MODEL) then
             hr = h/aa(ist)
             if(hr.lt.1.) cova=cova+cc(ist)*(1.-hr*(1.5-.5*hr*hr))
 !
 ! Exponential Variogram Model?
 !
-else if(it(ist).eq.EXPONENTIAL) then
+else if(it(ist).eq.EXPONENTIAL_MODEL) then
             cova = cova + cc(ist)*exp(-3.0*h/aa(ist))
 !
 ! Gaussian Variogram Model?
 !
-else if(it(ist).eq.GAUSSIAN) then
+else if(it(ist).eq.GAUSSIAN_MODEL) then
             cova = cova + cc(ist)*exp(-3.*(h/aa(ist))*(h/aa(ist)))
 !
 ! Power Variogram Model?
@@ -212,7 +243,7 @@ else if(it(ist).eq.POWER_MODEL) then
 !
 ! Hole Effect Model?
 !
-else if(it(ist).eq.HOLE_EFFECT) then
+else if(it(ist).eq.HOLE_EFFECT_MODEL) then
 !                 d = 10.0 * aa(ist)
 !                 cova = cova + cc(ist)*exp(-3.0*h/d)*cos(h/aa(ist)*PI)
             cova = cova + cc(ist)*cos(h/aa(ist)*PI)

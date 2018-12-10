@@ -17,18 +17,19 @@ subroutine setup_ctable(ctable_st, &
   nx,ny,nz, &
   xmn,ymn,zmn, &
   xsiz,ysiz,zsiz, &
-  nst,c0,cc,aa,it,vrotmat, & !variogram
+  vmodel, & !variogram
   radsqd, & !search
   nodmax,&
   MAXCTX,MAXCTY,MAXCTZ,cbb)
+use variography, only: vmodel_type
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
 real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
 real(kind=fk), intent(in) :: radsqd
-integer(kind=gik), intent(in) ::nst,it(:),nodmax
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
+type(vmodel_type),intent(in) :: vmodel
+integer(kind=gik), intent(in) ::nodmax
 integer(kind=gik), intent(in) ::MAXCTX,MAXCTY,MAXCTZ
 type(ctable_structure_type),intent(inout) :: ctable_st
 real(kind=fk),intent(out) :: cbb
@@ -52,7 +53,7 @@ real(kind=fk),intent(out) :: cbb
       nx,ny,nz, &
       xmn,ymn,zmn, &
       xsiz,ysiz,zsiz, &
-      nst,c0,cc,aa,it,vrotmat, &
+      vmodel, &
       radsqd,nodmax,&
       MAXCTX,MAXCTY,MAXCTZ,&
       ctable_st%covtab,ctable_st%nlooku,ctable_st%ixnode,ctable_st%iynode,ctable_st%iznode,cbb)
@@ -107,6 +108,7 @@ subroutine sgsim_grid( &
   )
 use geometry, only: grid_type, setrot
 use searching, only: sb_structure_type,setup_superblock,search_super_block
+use variography, only: max_cova,setup_vmodel,vmodel_type,cova3_vmodel,print_vmodel
 implicit none
 !arguments
 real(kind=fk), intent(inout) :: x(:),y(:),z(:)
@@ -123,8 +125,8 @@ integer(kind=gik), intent(in) :: seed,MAXSBX,MAXSBY,MAXSBZ,mxctx,mxcty,mxctz,nsi
 real(kind=fk), intent(inout) :: sim(:)
 
 !locals
+type(vmodel_type) :: vmodel
 type(sb_structure_type) :: sb_structure
-real(kind=fk) vrotmat(nst,3,3),srotmat(3,3)
 type(ctable_structure_type) :: ctable_st
 type(grid_type) :: sb_grid
 integer(kind=gik) :: nmult = 0
@@ -147,20 +149,16 @@ real(kind=fk) :: realisation_seed(nsim),cbb
   call random_number(realisation_seed)
 
 
-  call setrot(sang1,sang2,sang3,sanis1,sanis2,srotmat)
+  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,sang1,sang2,sang3,sanis1,sanis2,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
 
-  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,srotmat,radius*radius,MAXSBX,MAXSBY,MAXSBZ)
-
-  do nr=1,nst
-    call setrot(ang1(nr),ang2(nr),ang3(nr),anis1(nr),anis2(nr),vrotmat(nr,:,:))
-  end do
+  call setup_vmodel(vmodel,nst,c0,it,cc,aa,ang1,ang2,ang3,anis1,anis2)
 
   !ctable
   call setup_ctable(ctable_st, &
     nx,ny,nz, &
     xmn,ymn,zmn, &
     xsiz,ysiz,zsiz, &
-    nst,c0,cc,aa,it,vrotmat, & !variogram
+    vmodel, & !variogram
     radius*radius, & !search
     nodmax,&
     mxctx,mxcty,mxctz,cbb)
@@ -172,11 +170,11 @@ real(kind=fk) :: realisation_seed(nsim),cbb
       x,y,z, & ! coordinates
       vr, &    ! variable
       nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
-      ktype,radius,srotmat, & !search configuration
+      ktype,radius, & !search configuration
       ndmin,ndmax,noct, & !
       nodmax,nmult, sstrat, & !simulated data search
       sb_structure, &
-      nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
+      vmodel,cbb, & !variogram
       ctable_st,&
       rseed,&
       sim) !output
@@ -187,11 +185,11 @@ subroutine sgsim_realizarion_grid( isim, &
     x,y,z, & ! coordinates
     vr, &    ! variable
     nx,ny,nz,xmn,ymn,zmn,xsiz,ysiz,zsiz, & !grid configuration
-    ktype,radius,srotmat, & !search configuration
+    ktype,radius, & !search configuration
     ndmin,ndmax,noct, & !
     nodmax,nmult, sstrat, & !simulated data search
     sb_structure, &
-    nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
+    vmodel,cbb, & !variogram
     ctable_st,&
     seed,&
     sim) !output
@@ -199,6 +197,7 @@ use geometry
 use searching, only: sb_structure_type,setup_superblock,search_super_block
 use sorting, only: sortem_original
 use gaussian_utils, only: gauinv
+use variography, only: vmodel_type
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: isim
@@ -208,11 +207,11 @@ integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
 real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
 integer(kind=gik), intent(in) :: ktype
-real(kind=fk), intent(in) :: radius,srotmat(:,:)
+real(kind=fk), intent(in) :: radius
 integer(kind=gik), intent(in) :: ndmin,ndmax,noct,nodmax,nmult,sstrat
 type(sb_structure_type),intent(in) :: sb_structure
-integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:),cbb
+type(vmodel_type),intent(in) :: vmodel
+real(kind=fk), intent(in) :: cbb
 type(ctable_structure_type),intent(in) :: ctable_st
 integer(kind=gik), intent(in) :: seed
 real(kind=fk), intent(inout) :: sim(:)
@@ -230,7 +229,7 @@ real(kind=dk) :: xp
 real(kind=fk)    cmean,cstdev,gmean
 integer(kind=gik) id2,idbg,idum,index,irepo,jx,jy,jz,ldbg,ierr
 integer(kind=gik) nclose,infoct(8),lktype
-real(kind=fk) close(size(x))
+integer(kind=gik) close(size(x))
 integer(kind=gik) ncnode,icnode(nodmax) !results of searching simulated nodes
 real(kind=fk) :: cnodex(nodmax),cnodey(nodmax),cnodez(nodmax),cnodev(nodmax)
 integer(kind=gik) :: ne,seed_size,i,j
@@ -376,7 +375,7 @@ call random_seed(put=(/ seed /))
 !
     if(sstrat.eq.0) then
       call search_super_block( &
-          xx,yy,zz,radsqd,srotmat, &
+          xx,yy,zz,radsqd, &
           sb_structure, &
           ndmax,noct, &
           x,y,z, &
@@ -447,7 +446,7 @@ call random_seed(put=(/ seed /))
       call krige(x,y,z,vr,ix,iy,iz,xx,yy,zz,lktype,gmean,&
                  nclose,close, &
                  ncnode,icnode,cnodex,cnodey,cnodez,cnodev, &
-                 nst,c0,cc,aa,it,vrotmat,cbb,ctable_st,cmean,cstdev)
+                 vmodel,cbb,ctable_st,cmean,cstdev)
                  
       cmean = 0.0
       cstdev = 1.0
@@ -525,11 +524,11 @@ subroutine krige(x,y,z,vra, &
       gmean, &
       nclose,close,& !conditioning data
       ncnode,icnode,cnodex,cnodey,cnodez,cnodev, & !results of searching simulated nodes
-      nst,c0,cc,aa,it,vrotmat,cbb, & !variogram
+      vmodel,cbb, & !variogram
       ctable_st, &
       cmean, &
       cstdev)
-use variography, only: cova3
+use variography, only: cova3_vmodel,vmodel_type
 use geometry, only: sqdist
 use solvers, only: system_solver
 implicit none
@@ -539,13 +538,12 @@ integer(kind=gik), intent(in) :: ix,iy,iz
 real(kind=fk), intent(in) :: xx,yy,zz
 real(kind=fk), intent(in) :: gmean
 integer(kind=gik), intent(in) :: ktype
-integer(kind=gik), intent(in) :: nclose
-real(kind=fk), intent(in) :: close(:)
+type(vmodel_type), intent(in) :: vmodel
+integer(kind=gik), intent(in) :: nclose,close(:)
 integer(kind=gik) ncnode,icnode(:) !results of searching simulated nodes
 real(kind=fk) :: cnodex(:),cnodey(:),cnodez(:),cnodev(:)
 type(ctable_structure_type),intent(in) :: ctable_st
-integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:),cbb
+real(kind=fk), intent(in) :: cbb
 real(kind=fk), intent(out) :: cmean,cstdev
 !locals
 logical first
@@ -598,13 +596,13 @@ do j=1,nclose
     print *, indexi,indexj,x1,y1,z1,x2,y2,z2,close(i),close(j)
     stop "SAMPLES REPETEAD"
     end if
-    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+    call cova3_vmodel(x1,y1,z1,x2,y2,z2,vmodel,cmax,cov)
     a(i,j) = cov
     a(j,i) = cov
 
   end do
 
-  call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+  call cova3_vmodel(xx,yy,zz,x2,y2,z2,vmodel,cmax,cov)
   b(j) = cov
 
 end do
@@ -621,7 +619,7 @@ do j=nclose+1,na
     y1 = cnodey(indexi)
     z1 = cnodez(indexi)
     
-    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+    call cova3_vmodel(x1,y1,z1,x2,y2,z2,vmodel,cmax,cov)
 #ifdef TRACE                  
     print *,x1,y1,z1,x2,y2,z2,cov
 #endif
@@ -629,7 +627,7 @@ do j=nclose+1,na
     a(j,i) = dble(cov)
 
   end do
-  call cova3(xx,yy,zz,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+  call cova3_vmodel(xx,yy,zz,x2,y2,z2,vmodel,cmax,cov)
   
   !print *,'sim par',j,xx,yy,zz,x2,y2,z2,cov,sqdist(xx,yy,zz,x2,y2,z2,vrotmat(1,:,:))
   b(j) = dble(cov)
@@ -646,7 +644,7 @@ do j=nclose+1,na
     x1 = x(indexi)
     y1 = y(indexi)
     z1 = z(indexi)
-    call cova3(x1,y1,z1,x2,y2,z2,nst,c0,it,cc,aa,vrotmat,cmax,cov)
+    call cova3_vmodel(x1,y1,z1,x2,y2,z2,vmodel,cmax,cov)
     a(i,j) = dble(cov)
     a(j,i) = dble(cov)
   end do
@@ -820,11 +818,11 @@ subroutine ctable( &
     nx,ny,nz, &
     xmn,ymn,zmn, &
     xsiz,ysiz,zsiz, &
-    nst,c0,cc,aa,it,vrotmat, &
+    vmodel, &
     radsqd,nodmax,&
     MAXCTX,MAXCTY,MAXCTZ,&
     covtab,nlooku,ixnode,iynode,iznode,cbb)
-use variography, only: cova3
+use variography, only: cova3_vmodel,vmodel_type
 use sorting, only: sortem_original
 use geometry, only: sqdist
 implicit none
@@ -832,8 +830,7 @@ implicit none
 integer(kind=gik), intent(in) :: nx,ny,nz
 real(kind=fk), intent(in) :: xmn,ymn,zmn
 real(kind=fk), intent(in) :: xsiz,ysiz,zsiz
-integer(kind=gik), intent(in) ::nst,it(:)
-real(kind=fk), intent(in) :: c0,cc(:),aa(:),vrotmat(:,:,:)
+type(vmodel_type), intent(in) :: vmodel
 real(kind=fk), intent(in) :: radsqd
 real(kind=fk), intent(inout) :: covtab(:,:,:)
 integer(kind=gik), intent(out) ::nlooku
@@ -868,7 +865,7 @@ nctz = min(((MAXCTZ-1)/2),(nz-1))
 !
 ! Initialize the covariance subroutine and cbb at the same time:
 !
-call cova3(0.0,0.0,0.0,0.0,0.0,0.0,nst,c0,it,cc,aa,vrotmat,cmax,cbb)
+call cova3_vmodel(0.0,0.0,0.0,0.0,0.0,0.0,vmodel,cmax,cbb)
 !
 ! Now, set up the table and keep track of the node offsets that are
 ! within the search radius:
@@ -883,8 +880,8 @@ jc = ncty + 1 + j
 do k=-nctz,nctz
 zz = k * zsiz
 kc = nctz + 1 + k
-      call cova3(0.0,0.0,0.0,xx,yy,zz,nst,c0,it,cc,aa,vrotmat,cmax,covtab(ic,jc,kc))
-      hsqd = sqdist(0.0,0.0,0.0,xx,yy,zz,vrotmat(1,:,:))
+      call cova3_vmodel(0.0,0.0,0.0,xx,yy,zz,vmodel,cmax,covtab(ic,jc,kc))
+      hsqd = sqdist(0.0,0.0,0.0,xx,yy,zz,vmodel%structure(1)%rotmat)
       if(real(hsqd).le.radsqd) then
             nlooku         = nlooku + 1
 !

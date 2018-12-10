@@ -97,173 +97,110 @@ implicit none
   integer, intent(in), optional :: option
   integer, intent(out), optional :: info
   !locals
-  real(kind=8) int_a(size(b),size(b))
+  real(kind=8) int_a(size(b),size(b)),int_b(size(b))
   integer INDX(size(b))
   real(kind=8) y(size(b))
   integer n,D,rc
   logical failed
   
   int_a = real(a,kind=8)
+  int_b = real(b,kind=8)
   n = size(b)
 
+  call gauss_2(int_a,int_b,y,n)
   
-  call LUDCMP(int_a,n,INDX,D,rc)
+  x = real(y,kind=fk)
   
-  if (rc.eq.0) then
-    call LUBKSB(int_a,n,INDX,y)
-    x = real(y,kind=fk)
-  endif
-  info=int(rc,kind=gik)
-
+  info = 0
+  
 end subroutine
 
+subroutine gauss_2(a,b,x,n)
+!===========================================================
+! Solutions to a system of linear equations A*x=b
+! Method: Gauss elimination (with scaling and pivoting)
+! Alex G. (November 2009)
+!-----------------------------------------------------------
+! input ...
+! a(n,n) - array of coefficients for matrix A
+! b(n)   - array of the right hand coefficients b
+! n      - number of equations (size of matrix A)
+! output ...
+! x(n)   - solutions
+! coments ...
+! the original arrays a(n,n) and b(n) will be destroyed 
+! during the calculation
+!===========================================================
+implicit none 
+integer n
+double precision a(n,n), b(n), x(n)
+double precision s(n)
+double precision c, pivot, store
+integer i, j, k, l
 
-    !  ***************************************************************
-    !  * Given an N x N matrix A, this routine replaces it by the LU *
-    !  * decomposition of a rowwise permutation of itself. A and N   *
-    !  * are input. INDX is an output vector which records the row   *
-    !  * permutation effected by the partial pivoting; D is output   *
-    !  * as -1 or 1, depending on whether the number of row inter-   *
-    !  * changes was even or odd, respectively. This routine is used *
-    !  * in combination with LUBKSB to solve linear equations or to  *
-    !  * invert a matrix. Return code is 1, if matrix is singular.   *
-    !  ***************************************************************
-     Subroutine LUDCMP(A,N,INDX,D,CODE)
-     IMPLICIT NONE
-     integer, parameter :: nmax = 100
-     real, parameter :: tiny = 1.5D-16
+! step 1: begin forward elimination
+do k=1, n-1
 
-     real*8, intent(inout), dimension(N,N) :: A
-     integer, intent(in) :: N
-     integer, intent(out) :: D, CODE
-     integer, intent(out), dimension(N) :: INDX
-     !f2py depend(N) A, indx
+! step 2: "scaling"
+! s(i) will have the largest element from row i 
+  do i=k,n                       ! loop over rows
+    s(i) = 0.0
+    do j=k,n                    ! loop over elements of row i
+      s(i) = max(s(i),abs(a(i,j)))
+    end do
+  end do
 
-     REAL*8  :: AMAX, DUM, SUMM, VV(NMAX)
-     INTEGER :: i, j, k, imax
+! step 3: "pivoting 1" 
+! find a row with the largest pivoting element
+  pivot = abs(a(k,k)/s(k))
+  l = k
+  do j=k+1,n
+    if(abs(a(j,k)/s(j)) > pivot) then
+      pivot = abs(a(j,k)/s(j))
+      l = j
+    end if
+  end do
 
-     D=1; CODE=0
+! Check if the system has a sigular matrix
+  if(pivot == 0.0) then
+    write(*,*) ' The matrix is sigular '
+    return
+  end if
 
-     DO I=1,N
-       AMAX=0.d0
-       DO J=1,N
-         IF (DABS(A(I,J)).GT.AMAX) AMAX=DABS(A(I,J))
-       END DO ! j loop
-       IF(AMAX.LT.TINY) THEN
-         CODE = 1
-         RETURN
-       END IF
-       VV(I) = 1.d0 / AMAX
-     END DO ! i loop
+! step 4: "pivoting 2" interchange rows k and l (if needed)
+if (l /= k) then
+  do j=k,n
+     store = a(k,j)
+     a(k,j) = a(l,j)
+     a(l,j) = store
+  end do
+  store = b(k)
+  b(k) = b(l)
+  b(l) = store
+end if
 
-     DO J=1,N
-       DO I=1,J-1
-         SUMM = A(I,J)
-         DO K=1,I-1
-           SUMM = SUMM - A(I,K)*A(K,J) 
-         END DO ! k loop
-         A(I,J) = SUMM
-       END DO ! i loop
-       AMAX = 0.d0
-       DO I=J,N
-         SUMM = A(I,J)
-         DO K=1,J-1
-           SUMM = SUMM - A(I,K)*A(K,J) 
-         END DO ! k loop
-         A(I,J) = SUMM
-         DUM = VV(I)*DABS(SUMM)
-         IF(DUM.GE.AMAX) THEN
-           IMAX = I
-           AMAX = DUM
-         END IF
-       END DO ! i loop  
-       
-       IF(J.NE.IMAX) THEN
-         DO K=1,N
-           DUM = A(IMAX,K)
-           A(IMAX,K) = A(J,K)
-           A(J,K) = DUM
-         END DO ! k loop
-         D = -D
-         VV(IMAX) = VV(J)
-       END IF
+! step 5: the elimination (after scaling and pivoting)
+   do i=k+1,n
+      c=a(i,k)/a(k,k)
+      a(i,k) = 0.0
+      b(i)=b(i)- c*b(k)
+      do j=k+1,n
+         a(i,j) = a(i,j)-c*a(k,j)
+      end do
+   end do
+end do
 
-       INDX(J) = IMAX
-       IF(DABS(A(J,J)) < TINY) A(J,J) = TINY
+! step 6: back substiturion 
+x(n) = b(n)/a(n,n)
+do i=n-1,1,-1
+   c=0.0
+   do j=i+1,n
+     c= c + a(i,j)*x(j)
+   end do 
+   x(i) = (b(i)- c)/a(i,i)
+end do
 
-       IF(J.NE.N) THEN
-         DUM = 1.d0 / A(J,J)
-         DO I=J+1,N
-           A(I,J) = A(I,J)*DUM
-         END DO ! i loop
-       END IF 
-     END DO ! j loop
-
-     RETURN
- END subroutine LUDCMP
- 
-!*******************************************************
-!*    LU decomposition routines used by test_lu.f90    *
-!*                                                     *
-!*                 F90 version by J-P Moreau, Paris    *
-!* --------------------------------------------------- *
-!* Reference:                                          *
-!*                                                     *
-!* "Numerical Recipes By W.H. Press, B. P. Flannery,   *
-!*  S.A. Teukolsky and W.T. Vetterling, Cambridge      *
-!*  University Press, 1986" [BIBLI 08].                *
-!*                                                     * 
-!*******************************************************
-
-!  ******************************************************************
-!  * Solves the set of N linear equations A . X = B.  Here A is     *
-!  * input, not as the matrix A but rather as its LU decomposition, *
-!  * determined by the routine LUDCMP. INDX is input as the permuta-*
-!  * tion vector returned by LUDCMP. B is input as the right-hand   *
-!  * side vector B, and returns with the solution vector X. A, N and*
-!  * INDX are not modified by this routine and can be used for suc- *
-!  * cessive calls with different right-hand sides. This routine is *
-!  * also efficient for plain matrix inversion.                     *
-!  ******************************************************************
- subroutine LUBKSB(A, N, INDX, B)
- implicit none
- integer, intent(in) :: N 
- real*8, intent(in), dimension(N,N) :: A
- integer, intent(in), dimension(N) :: INDX
- real*8, intent(inout), dimension(N) :: B
- !locals
- integer ii,i,j,ll
-
- REAL*8  SUMM
-
- II = 0
-
- DO I=1,N
-   LL = INDX(I)
-   SUMM = B(LL)
-   B(LL) = B(I)
-   IF(II.NE.0) THEN
-     DO J=II,I-1
-       SUMM = SUMM - A(I,J)*B(J)
-     END DO ! j loop
-   ELSE IF(SUMM.NE.0.d0) THEN
-     II = I
-   END IF
-   B(I) = SUMM
- END DO ! i loop
-
- DO I=N,1,-1
-   SUMM = B(I)
-   IF(I < N) THEN
-     DO J=I+1,N
-       SUMM = SUMM - A(I,J)*B(J)
-     END DO ! j loop
-   END IF
-   B(I) = SUMM / A(I,I)
- END DO ! i loop
-
- RETURN
- END subroutine LUBKSB
+end subroutine gauss_2
 #endif
 
 end module

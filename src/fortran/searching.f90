@@ -7,9 +7,11 @@ type sb_structure_type
   integer(kind=gik) :: nxsup,nysup,nzsup
   real(kind=fk)    :: xsizsup,ysizsup,zsizsup
   real(kind=fk)    :: xmnsup,ymnsup,zmnsup
+  real(kind=fk) rotmat(3,3)  
   integer(kind=gik), allocatable :: nisb(:)
   integer(kind=gik) , allocatable :: ixsbtosr(:),iysbtosr(:),izsbtosr(:)
-  integer(kind=gik)  :: nsbtosr
+  integer(kind=gik)  :: nsbtosr, ndata
+  
   !for checking sizes
   integer(kind=gik)  :: nisb_len,ixsbtosr_len,iysbtosr_len,izsbtosr_len
   
@@ -43,7 +45,7 @@ subroutine super_block_print(sb_p) bind(c, name='super_block_print')
 end subroutine
 
 
-function setup_superblock_c(x,y,z,vr,sec,n,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ) bind(c, name='setup_superblock')
+function setup_superblock_c(x,y,z,vr,sec,n,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,sang1,sang2,sang3,sanis1,sanis2,radsqd,MAXSBX,MAXSBY,MAXSBZ) bind(c, name='setup_superblock')
   implicit none
   real(kind=fk), intent(inout) :: x(n),y(n),z(n)
   real(kind=fk), intent(inout) :: vr(n)
@@ -52,7 +54,7 @@ function setup_superblock_c(x,y,z,vr,sec,n,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,r
   integer(kind=gik), intent(in),value :: nx,ny,nz
   real(kind=fk), intent(in),value    :: xsiz,ysiz,zsiz
   real(kind=fk), intent(in),value    :: xmn,ymn,zmn
-  real(kind=fk), intent(in) :: rotmat(3,3)
+  real(kind=fk), intent(in) :: sang1,sang2,sang3,sanis1,sanis2
   real(kind=fk), intent(in),value :: radsqd
   integer(kind=gik), intent(in), value :: MAXSBX,MAXSBy,MAXSBZ
 !return
@@ -64,34 +66,33 @@ function setup_superblock_c(x,y,z,vr,sec,n,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,r
   print *,"x",size(x)
   print *,"y",size(y)
   print *,"z",size(z)
-
-  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+  
+  sb_structure = setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,sang1,sang2,sang3,sanis1,sanis2,radsqd,MAXSBX,MAXSBY,MAXSBZ)
   
   setup_superblock_c = c_loc(sb_structure)
 end function
 
 integer(kind=gik) function search_super_block_c(sb_p, &
-        xloc,yloc,zloc,radsqd,rotmat,ndmax,noct,x,y,z,nd,nclose,close,infoct) bind(c, name='search_super_block')
+        xloc,yloc,zloc,radsqd,&
+        ndmax,noct,x,y,z,nd,nclose,close,infoct) bind(c, name='search_super_block')
 implicit none
 !arguments
   type(c_ptr), intent(in), value :: sb_p
   real(kind=fk), intent(in), value :: xloc,yloc,zloc
-  real(kind=fk), intent(in) :: rotmat(3,3)
   real(kind=fk), intent(in), value :: radsqd
   integer(kind=gik), intent(in), value :: ndmax,noct
   real(kind=fk), intent(in) :: x(nd),y(nd),z(nd)
   integer(kind=gik), intent(in),value :: nd
-  real(kind=fk), intent(inout) :: close(nclose)
   integer(kind=gik), intent(in) :: nclose
-  integer(kind=gik), intent(inout) :: infoct(8)
+  integer(kind=gik), intent(inout) :: close(nclose),infoct(8)
 !locals
   type(sb_structure_type),pointer :: sb_structure
-  real(kind=fk) :: buffer(nd)
+  integer(kind=gik) :: buffer(nd)
   integer(kind=gik) n_found
 !begin
   call c_f_pointer(sb_p, sb_structure)  
   
-  call search_super_block(xloc,yloc,zloc,radsqd,rotmat,sb_structure,ndmax,noct,x,y,z,n_found,buffer,infoct)
+  call search_super_block(xloc,yloc,zloc,radsqd,sb_structure,ndmax,noct,x,y,z,n_found,buffer,infoct)
   close(1:n_found) = buffer(1:n_found)
   
   search_super_block_c = n_found
@@ -100,8 +101,8 @@ end function
 
 !=======================================================================
 !Fortran side
-function setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,rotmat,radsqd,MAXSBX,MAXSBY,MAXSBZ)
-use geometry, only: grid_type
+function setup_superblock(x,y,z,vr,sec,nx,xmn,xsiz,ny,ymn,ysiz,nz,zmn,zsiz,sang1,sang2,sang3,sanis1,sanis2,radsqd,MAXSBX,MAXSBY,MAXSBZ)
+use geometry, only: grid_type,setrot
 implicit none
 !arguments
   real(kind=fk), intent(inout) :: x(:),y(:),z(:)
@@ -110,7 +111,7 @@ implicit none
   integer(kind=gik) :: nx,ny,nz
   real(kind=fk)    :: xsiz,ysiz,zsiz
   real(kind=fk)    :: xmn,ymn,zmn
-  real(kind=fk), intent(in) :: rotmat(:,:),radsqd
+  real(kind=fk), intent(in) :: sang1,sang2,sang3,sanis1,sanis2,radsqd
   integer(kind=gik), intent(in) :: MAXSBX,MAXSBy,MAXSBZ
 
 !return
@@ -119,12 +120,15 @@ implicit none
   type(sb_structure_type) :: sb_structure
   integer(kind=gik) MAXSB
   integer(kind=gik) test
+  
+  call setrot(sang1,sang2,sang3,sanis1,sanis2,sb_structure%rotmat)  
 
   MAXSB = min(nx,MAXSBX)*min(ny,MAXSBY)*min(nz,MAXSBZ)
   !determine
   allocate(sb_structure%nisb(MAXSB),stat = test)
   
   sb_structure%nisb_len = MAXSB
+  sb_structure%ndata = size(vr)
   
 
 #ifdef TRACE                  
@@ -162,7 +166,7 @@ implicit none
   call picksup(sb_structure%nxsup,sb_structure%xsizsup, &
                sb_structure%nysup,sb_structure%ysizsup, &
                sb_structure%nzsup,sb_structure%zsizsup, &
-               rotmat,radsqd, &
+               sb_structure%rotmat,radsqd, &
                sb_structure%nsbtosr,sb_structure%ixsbtosr, &
                sb_structure%iysbtosr,sb_structure%izsbtosr)
 #ifdef TRACE                  
@@ -173,7 +177,7 @@ implicit none
 end function
 
 subroutine search_super_block( &
-    xloc,yloc,zloc,radsqd,rotmat, &
+    xloc,yloc,zloc,radsqd, &
     sb_structure, &
     ndmax,noct, &
     x,y,z, &
@@ -182,20 +186,19 @@ use geometry, only: grid_type
 implicit none
 !arguments
   real(kind=fk), intent(in) :: xloc,yloc,zloc
-  real(kind=fk), intent(in) :: rotmat(:,:),radsqd
+  real(kind=fk), intent(in) :: radsqd
   type(sb_structure_type), intent(in) :: sb_structure
   integer(kind=gik), intent(in) :: ndmax,noct
   real(kind=fk), intent(in) :: x(:),y(:),z(:)
   integer(kind=gik), intent(out) :: nclose
-  real(kind=fk), intent(inout) :: close(:)
-  integer(kind=gik), intent(inout) :: infoct(:)
+  integer(kind=gik), intent(inout) :: close(:),infoct(:)
 
 !locals
 
   nclose = ndmax
 
   call srchsupr( &
-      xloc,yloc,zloc,radsqd,rotmat, &
+      xloc,yloc,zloc,radsqd,sb_structure%rotmat, &
       sb_structure%nsbtosr, &
       sb_structure%ixsbtosr,sb_structure%iysbtosr,sb_structure%izsbtosr, &
       noct, &
@@ -406,7 +409,7 @@ real(kind=fk), intent(inout) :: vr(:)
 real(kind=fk), intent(inout),optional :: sec(:)
 integer(kind=gik), intent(in) :: MAXSBX,MAXSBy,MAXSBZ
 
-integer(kind=gik), allocatable, intent(out) :: nisb(:)
+integer(kind=gik), intent(inout) :: nisb(:)
 integer(kind=gik), intent(out) :: nxsup,nysup,nzsup
 real(kind=fk), intent(out) :: xmnsup,ymnsup,zmnsup
 real(kind=fk), intent(out) :: xsizsup,ysizsup,zsizsup
@@ -432,9 +435,9 @@ nd = size(x)
 !
 ! Initialize the extra super block array to zeros:
 !
-  allocate(nisb(nxsup*nysup*nzsup))
-
-  nisb = 0
+      do i=1,nxsup*nysup*nzsup
+        nisb(i) = 0
+      end do
 
 !
 ! Loop over all the data assigning the data to a super block and
@@ -453,12 +456,15 @@ nd = size(x)
 ! Sort the data by ascending super block number:
 !
       nsort = 4 + nsec
-      call sortem_original(1,nd,tmp,x,y,z,vr,sec)
-
+      if (size(sec) > 0) then
+        call sortem_original(1,nd,tmp,x,y,z,vr,sec)
+      else
+        call sortem_original(1,nd,tmp,x,y,z,vr)
+      end if
 #ifdef TRACE_SORTED
       print *,"SORTED XYZ"
       do i=1,nd
-        print *,x(i),y(i),z(i),vr(i),sec(i)
+        print *,x(i),y(i),z(i),vr(i)
       end do
 #endif
 !
@@ -536,7 +542,7 @@ subroutine srchsupr( &
 !
 !-----------------------------------------------------------------------
 use geometry, only: getindx, sqdist
-use sorting, only: sortem_original
+use sorting, only: sortem_real_int
 implicit none
 !arguments
 integer(kind=gik), intent(in) :: nxsup,nysup,nzsup
@@ -551,17 +557,19 @@ real(kind=fk), intent(in) :: xloc,yloc,zloc
 real(kind=fk), intent(in) :: rotmat(:,:),radsqd
 integer(kind=gik),intent(in) :: nsbtosr, ixsbtosr(:),iysbtosr(:),izsbtosr(:)
 
-integer(kind=gik),intent(inout) :: nclose
-integer(kind=gik),intent(inout) :: infoct(:)
-real(kind=fk),intent(inout) :: close(:)
+integer(kind=gik),intent(inout) :: nclose,infoct(:),close(:)
 !locals
 real(kind=dk) hsqd,dx,dy,dz,h
-real(kind=fk) tmp(size(close)) !size 
+real(kind=fk) tmp(size(x)),tmp_close(size(x)) !size 
 integer(kind=gik) inoct(8),ix,iy,iz,ixsup,iysup,izsup,i,ii,isup,j,iq,na,nt,nums,nclose_int
 logical inflag
 !
 ! Determine the super block location of point being estimated:
 !
+  ix=0
+  iy=0
+  iz=0
+  
       call getindx(nxsup,xmnsup,xsizsup,xloc,ix,inflag)
       call getindx(nysup,ymnsup,ysizsup,yloc,iy,inflag)
       call getindx(nzsup,zmnsup,zsizsup,zloc,iz,inflag)
@@ -579,9 +587,11 @@ logical inflag
 !
 ! Is this super block within the grid system:
 !
+#ifdef CHECK_BOUNDS
             if (isup > size(ixsbtosr)) stop "isup > size(ixsbtosr)"
             if (isup > size(iysbtosr)) stop "isup > size(ixsbtosr)"
             if (isup > size(izsbtosr)) stop "isup > size(ixsbtosr)"
+#endif
 
             ixsup = ix + ixsbtosr(isup)
             iysup = iy + iysbtosr(isup)
@@ -602,7 +612,9 @@ logical inflag
 !
             ii = ixsup + (iysup-1)*nxsup + (izsup-1)*nxsup*nysup
 
+#ifdef CHECK_BOUNDS
             if (ii > size(nisb)) stop "ii > size(nisb)"
+#endif
 
             if(ii.eq.1) then
                   nums = nisb(ii)
@@ -639,10 +651,12 @@ logical inflag
 !
                   nclose_int = nclose_int + 1
 
+#ifdef CHECK_BOUNDS
                   if (nclose_int > size(close)) stop "nclose_int > size(close)"
                   if (nclose_int > size(tmp)) stop "nclose_int > size(tmp)"
+#endif
 
-                  close(nclose_int) = real(i)
+                  close(nclose_int) = i
                   tmp(nclose_int)  = real(hsqd)
  2          continue
  1    continue
@@ -651,8 +665,12 @@ logical inflag
 !
 
       if (size(tmp) /= size(close)) stop "size(tmp) /= size(close)"
+      
+      !tmp_close = real(close,kind=fk)
 
-      call sortem_original(1,nclose_int,tmp,close)
+      call sortem_real_int(1,nclose_int,tmp,close)
+
+      !close(1:nclose_int) = int(tmp_close(1:nclose_int),kind=gik)
       
       nclose = nclose_int
 
@@ -673,7 +691,7 @@ logical inflag
       nt = 8*noct
       na = 0
       do j=1,nclose_int
-            i  = int(close(j))
+            i  = close(j)
             h  = tmp(j)
             dx = x(i) - xloc
             dy = y(i) - yloc

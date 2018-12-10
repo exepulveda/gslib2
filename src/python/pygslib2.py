@@ -64,7 +64,7 @@ __gslib2.super_block_print.argtypes = [
 __gslib2.super_block_print.restype = None
 
 __gslib2.search_super_block.argtypes = [
-        c_void_p, #
+        c_void_p, #superblock structure (pointer)
         c_float, #xloc
         c_float, #yloc
         c_float, #zloc
